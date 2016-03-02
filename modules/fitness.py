@@ -1,28 +1,28 @@
 __author__ = 'Sebi'
 
-from plotting import *
-from signals import *
+from modules.plotting import *
+from modules.signals import *
 
 
-def get_ss(cell, output):
+def get_ss(cell, output, dt=1):
     """
     Returns steady state level of specified node given zero initial conditions.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
         output (int) - node of interest
+        dt (float) - time step
 
     Returns:
         output_ss (float) - steady state level of specified node
     """
-    dt = 1
     blank_signal = Signal(name='get_ss', duration=300, dt=dt, signal=None)
     states, _, key = cell.simulate(blank_signal, mode='langevin', retall=True)
     output_ss = states[key[output], -1]
     return output_ss
 
 
-def interaction_check(cell, output, input_, plot=False):
+def interaction_check(cell, output, input_, plot=False, dt=1):
     """
     Determines whether a specified output node is affected by a particular input node.
 
@@ -31,11 +31,11 @@ def interaction_check(cell, output, input_, plot=False):
         output (int) - indesx of output node
         input_ (int) - index of input node
         plot (bool) - if true, plot output response
+        dt (float) - time step
 
     Returns:
         (bool) - true if cells are connected, false if not
     """
-    dt = 1
 
     # create stepwise input signal
     baseline = Signal(name='baseline', duration=300, dt=dt, signal=None, channels=1)
@@ -89,12 +89,12 @@ def get_fitness_1(cell, mode='langevin', plot=False):
  
     dt = 0.1
     plateau_count = 3
-    plateau_duration = 50
+    plateau_duration = 500
     input_node = 0
     output_node = 1
 
     # get steady state output level
-    output_ss = get_ss(cell, output=output_node)
+    output_ss = get_ss(cell, output=output_node, dt=dt)
 
     # BEGIN TEST
     # create sequence of plateaus for disturbance signal
@@ -126,7 +126,7 @@ def get_fitness_1(cell, mode='langevin', plot=False):
         # plot output level, output steady state, and output deviation from steady state
         ax1.plot(disturbance.time, output, '-b', label='Output', linewidth=3)
         ax1.plot(disturbance.time, [output_ss for _ in disturbance.time], '--b', label='Output Steady State')
-        ax1.plot(disturbance.time, abs(output-output_ss)*dt, '-r', label='Deviation from Steady State')
+        ax1.plot(disturbance.time, abs(output-output_ss), '-r', label='Deviation from Steady State')
         ax1.set_ylim(0, 1.1*max(output))
         ax1.set_xlabel('Time (min)', fontsize=16)
         ax1.set_ylabel('Output and Deviation', fontsize=16)
@@ -159,19 +159,19 @@ def get_fitness_2(cell, mode='langevin', plot=False):
         score (list) - list of objective-space coordinates, namely [cumulative_error, energy_usage]
     """
 
-    dt = 1
-    plateau_count = 5
-    plateau_duration = 100
+    dt = 0.1
+    plateau_count = 3
+    plateau_duration = 500
     input_node = 2
     output_node = 1
 
     # check to see whether input/output are connected, if not then skip this cell
-    connected = interaction_check(cell, output=output_node, input_=input_node)
+    connected = interaction_check(cell, output=output_node, input_=input_node, dt=dt)
     if connected is False:
         return None, None
 
     # get steady state sensor level
-    output_ss = get_ss(cell, output_node)
+    output_ss = get_ss(cell, output_node, dt=dt)
 
     # create sequence of plateaus for disturbance signal
     disturbance = Signal(name='driver', duration=plateau_duration, dt=dt, channels=1)
@@ -184,6 +184,10 @@ def get_fitness_2(cell, mode='langevin', plot=False):
 
     # run simulation
     states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, mode=mode, retall=True)
+
+    print(key[output_node], 'is index of output in states')
+    print(output_node, 'is output node')
+
     output = states[key[output_node], :]
 
     # integrate absolute difference between sensor and its steady state level
@@ -202,7 +206,7 @@ def get_fitness_2(cell, mode='langevin', plot=False):
         # plot output level, output steady state, and output deviation from steady state
         ax1.plot(disturbance.time, output, '-b', label='Output', linewidth=3)
         ax1.plot(disturbance.time, [output_ss for _ in disturbance.time], '--b', label='Output Steady State')
-        ax1.plot(disturbance.time, abs(output-output_ss)*dt, '-r', label='Deviation from Steady State')
+        ax1.plot(disturbance.time, abs(output-output_ss), '-r', label='Deviation from Steady State')
         ax1.set_ylim(0, 1.1*max(output))
         ax1.set_xlabel('Time (min)', fontsize=16)
         ax1.set_ylabel('Output and Deviation', fontsize=16)

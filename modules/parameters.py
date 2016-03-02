@@ -13,7 +13,7 @@ MODIFICATION_RATE_CONSTANT = 0.1
 
 # iffy
 basal_transcription_rate = 0.1
-dna_binding_affinity = 1e2
+dna_binding_affinity = 1e1
 hill_coefficient = 1
 
 # settled rates

@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 import copy
-from reactions import *
-from parameters import *
+from modules.reactions import *
+from modules.parameters import *
 
 """
 TO DO:
@@ -13,6 +13,8 @@ TO DO:
     2. Could add reversibility of phosphorylation, as well as binding kinetics
     3. could allow rate constants to mutate
     4. could add time delay for transcriptional regulators
+    5. add color legend to show_topology
+    6. compile stoichiometry at cell creation
 """
 
 
@@ -219,36 +221,73 @@ class Cell:
 
     def remove_isomers(self, protein):
         """
-        Remove modified forms of a selected protein along with all corresponding reactions. Note that this method is
-        circular, iterating through each isomer and its downstream isomers.
+        Remove modified forms of a selected protein along with all corresponding reactions. This method is
+        circular, iterating through each downstream protein and all of its downstream proteins and dependencies.
 
         Parameters:
-            protein (int) - index of gene-coded protein whose isomers are to be removed
+            protein (int) - index of protein whose isomers are to be removed
         """
 
-        # get all downstream isomers
-        isomers = [rxn.products[0] for rxn in self.reactions if rxn.rxn_type == 'modification' and protein in rxn.reactants]
+        # PROBLEM -- UPSTREAM/DOWNSTREAM DOESNT ACCOUNT FOR CROSSLINKING
 
-        if len(isomers) == 0:
-            # if no isomers are present, end routine
-            return
+        # remove any reactions pointing upstream in which protein is a reactant
+        self.reactions = [rxn for rxn in self.reactions if protein not in rxn.reactants or protein < rxn.products[0]]
+
+        # get downstream isomers (products yielded from modification of protein that also have higher index than protein,
+        # meaning they fall downstream of protein because they were created later)
+
+        # TO DO: REDEFINE ISOMER TO BE ANYTHING THAT HAS NO PARALLEL PATH ORIGINATING UPSTREAM ...
+
+        isomer_queue = [rxn.products[0] for rxn in self.reactions if protein in rxn.reactants and rxn.products[0] > protein]
+
+        print('isomer_queue', isomer_queue)
+
+        # if no isomers are present, end this iteration and move upstream
+        if len(isomer_queue) == 0:
+            return []
         else:
-            # if isomers are present, delete each one and all its dependents, then iteratively remove any more isomers
-            for isomer in isomers:
+            # if isomers are present, cycle through each one and iteratively re-run this procedure to remove any
+            # downstream isomers. each iteration returns a list of downstream proteins that have been removed from the
+            # cell's network, so that the higher level queue can be updated. overall, this serves to remove any
+            # downstream proteins.
 
-                # remove isomer
+            # initialize list of isomers directly downstream that have been removed
+            direct_isomers_removed = []
+
+            q = 0
+            while len(isomer_queue) > 0:
+                q += 1
+                if q > 1e3:
+                    print('Warning: Isomer removal procedure has exceeded 1000 iterations.')
+                    break
+
+                # select an isomer from the queue of remaining isomers
+                isomer = isomer_queue[0]
+
+
+                # remove isomer from cell
+                print('removing: ', isomer)
                 self.proteins.remove(isomer)
                 self.modified_proteins.remove(isomer)
+                direct_isomers_removed.append(isomer)
 
-                # remove all reactions and rate-modifiers downstream of isomer, unless it's another isomerization
-                self.reactions = [rxn for rxn in self.reactions if (isomer not in rxn.reactants or rxn.rxn_type == 'modification')]
+
+                # remove all reactions and rate-modifiers downstream of isomer, aside from isomerizations
+                self.reactions = [rxn for rxn in self.reactions if (isomer not in rxn.reactants or rxn.rxn_type in ['modification', 'catalytic_modification'])]
                 self.rate_mods = [mod for mod in self.rate_mods if isomer != mod.substrate]
-
-                # remove any more isomers (iterative)
-                self.remove_isomers(isomer)
 
                 # remove modification reaction that produced this isomer
                 self.reactions = [rxn for rxn in self.reactions if isomer not in rxn.products]
+
+                print('going downstream')
+                # remove any downstream isomers
+                downstream_isomers_removed = self.remove_isomers(isomer)
+                print('removed downstream: ', downstream_isomers_removed)
+
+                # update direct isomer queue
+                isomer_queue = [isomer for isomer in isomer_queue if isomer not in downstream_isomers_removed + direct_isomers_removed]
+
+            return downstream_isomers_removed + direct_isomers_removed
 
     def remove_coding_gene(self):
         """
@@ -367,30 +406,30 @@ class Cell:
     #     rxn_selected = np.random.choice(rxn_choices)
     #     self.reactions.remove(rxn_selected)
 
-    def add_catalytic_degradation(self, p1=None, p2=None):
+    def add_catalytic_degradation(self, degraded=None, enzyme=None):
         """
         Randomly select two proteins and add a protein-protein catalytic degradation (partial degradation) reaction.
 
         Parameters:
-            p1 (int) - index of degraded protein
-            p2 (int) - index of catalytic protein that promotes degradation of p1
+            degraded (int) - index of degraded protein
+            enzyme (int) - index of catalytic protein that promotes degradation of p1
         """
         # randomly choose two proteins, or use the two assigned
 
         if len(self.proteins) < 2:
             return
 
-        if p1 is None and p2 is None:
-            p1, p2 = np.random.choice(self.proteins, size=2, replace=False)
+        if degraded is None and enzyme is None:
+            degraded, p2 = np.random.choice(self.proteins, size=2, replace=False)
 
-        elif p1 is None and p2 is not None:
-            p1 = np.random.choice(self.proteins, size=1, replace=False)
+        elif degraded is None and enzyme is not None:
+            degraded = np.random.choice(self.proteins, size=1, replace=False)
 
-        elif p1 is not None and p2 is None:
+        elif degraded is not None and enzyme is None:
             p2 = np.random.choice(self.proteins, size=1, replace=False)
 
         # create reaction
-        rxn = Reaction(reactants=[p1, p2], products=None, rate_constant=CATALYTIC_DEGRADATION_RATE_CONSTANT, consumed=[p1], rxn_type='catalytic_degradation', cell_type=self.cell_type)
+        rxn = Reaction(reactants=[degraded, enzyme], products=None, rate_constant=CATALYTIC_DEGRADATION_RATE_CONSTANT, consumed=[degraded], rxn_type='catalytic_degradation', cell_type=self.cell_type)
         self.reactions.append(rxn)
 
     def remove_catalytic_degradation(self):
@@ -401,54 +440,180 @@ class Cell:
         rxn_selected = np.random.choice(rxn_choices)
         self.reactions.remove(rxn_selected)
 
-    def add_protein_modification(self, substrate=None):
+    def add_protein_modification(self, substrate=None, enzyme=None, product_specified=None, reversibility_bias=0.5):
         """
-        Randomly select a protein and add a reaction in which it is converted to a new protein species via first order
-        kinetics.
+        Add a reaction in which a protein is converted to a new protein species. The reaction may or may not be
+        assisted by another protein.
 
         Parameters:
-            substrate (int) - optional index of specific protein to be modified
-
+            substrate (int) - index of specific protein to be modified
+            enzyme (int) - index of enzyme that catalyzes modification
+            product_specified (int) - index of modified protein product
+            reversibility_bias (float) - probability that reverse modification is selected vs further modification
         """
-        # randomly choose one protein
-        if substrate is None:
-            protein1 = np.random.choice(self.proteins)
-        else:
-            protein1 = substrate
 
-        # create new protein with decay reaction
-        protein2 = self.species_count
-        self.proteins.append(protein2)
-        self.modified_proteins.append(protein2)
-        self.species_count += 1
-        protein2_decay = Reaction(reactants=[protein2], rate_constant=protein_decay_constant, consumed=[protein2], rxn_type='protein_decay', cell_type=self.cell_type)
-        self.reactions.append(protein2_decay)
+        # while loop is used to ensure that a unique reaction is added (no duplicate reactant/product pairs allowed)
+        duplicate_rxn = True
 
-        # create modification reaction
-        rxn = Reaction(reactants=[protein1], products=[protein2], rate_constant=MODIFICATION_RATE_CONSTANT, consumed=[protein1], rxn_type='modification', cell_type=self.cell_type)
+        count = 0
+        while duplicate_rxn is True:
+            count += 1
+            if count > 1e6:
+                print('Warning: protein modification failed to find unique reaction.')
+                break
+
+            # randomly choose one protein substrate to be modified
+            if substrate is None:
+                substrate = np.random.choice(self.proteins)
+
+            # if target product is not specified, first decide whether substrate is itself a modified protein. if it is,
+            # randomly decide whether to re-form its parent or create new modified form. otherwise, create new modified form.
+            product = product_specified
+            if product is None:
+
+                if substrate in self.modified_proteins and np.random.random() < reversibility_bias:
+
+                    # set product to one of modified protein's parent forms
+                    parents = [rxn.reactants[0] for rxn in self.reactions if substrate in rxn.products]
+                    product = int(np.random.choice(parents))
+
+                else:
+
+                    # create new modified protein
+                    product = self.species_count
+                    self.proteins.append(product)
+                    self.modified_proteins.append(product)
+                    self.species_count += 1
+
+                    # add new protein's decay reaction
+                    decay_rxn = Reaction(reactants=[product], rate_constant=protein_decay_constant, consumed=[product], rxn_type='protein_decay', cell_type=self.cell_type)
+                    self.reactions.append(decay_rxn)
+
+            # decide whether protein modification is enzyme assisted (requires at least 2 proteins total)
+
+            # if enzyme is specified, assume catalytic mechanism
+            if enzyme is not None:
+                probabilities = [0, 1]
+
+            # if at least two protein species exist, randomly choose a mechanism
+            elif len(self.proteins) > 2:
+                probabilities = [0.5, 0.5]
+
+            # if only one protein exists, assume non-catalytic mechanism
+            else:
+                probabilities = [1, 0]
+
+            # select mechanism
+            rxn_type = np.random.choice(['modification', 'catalytic_modification'], p=probabilities)
+
+            if rxn_type == 'modification':
+
+                # get rate constant and define reactants
+                rate_constant = MODIFICATION_RATE_CONSTANT
+                reactants = [substrate]
+
+            else:
+
+                # randomly choose one protein as an enzyme to catalyze modification of the substrate (exclude autocatalysis)
+                if enzyme is None:
+                    enzyme = np.random.choice([protein for protein in self.proteins if protein != substrate])
+
+                # get rate constant and define reactants
+                rate_constant = CATALYTIC_DEGRADATION_RATE_CONSTANT
+                reactants = [substrate, enzyme]
+
+            # if selected substrate, enzyme, and product lead to a unique reaction, break loop. otherwise, repeat it
+            existing_reactions = [rxn for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification']]
+            if len(existing_reactions) == 0:
+                duplicate_rxn = False
+            else:
+                duplicate_rxn = False
+                for rxn in existing_reactions:
+                    if rxn.reactants == reactants and rxn.products == [product]:
+                        duplicate_rxn = True
+                        break
+
+        # add modification reaction
+        rxn = Reaction(reactants=reactants, products=[product], rate_constant=rate_constant, consumed=[substrate], rxn_type=rxn_type, cell_type=self.cell_type)
         self.reactions.append(rxn)
 
-    def remove_protein_modification(self):
+    def remove_protein_modification(self, rxn_removed=None):
         """
-        Randomly select and remove a protein modification reaction, along with the corresponding modified protein and
-        all its dependencies.
+        Randomly select and remove a protein modification reaction. If the modified protein product is not formed
+        by any other reactions, remove it and all its dependencies.
+
+        Parameters:
+            rxn_removed (reaction object) - specific reaction to be removed
         """
-        # remove modification reaction
-        rxn_choices = [rxn for rxn in self.reactions if rxn.rxn_type == 'modification']
-        rxn_selected = np.random.choice(rxn_choices)
-        self.reactions.remove(rxn_selected)
 
-        # remove modified form of protein
-        modified_protein = rxn_selected.products[0]
-        self.proteins.remove(modified_protein)
-        self.modified_proteins.remove(modified_protein)
+        # randomly select a protein modification reaction for removal
+        rxn_choices = [rxn for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification']]
 
-        # remove all modified-protein dependent reactions.
-        self.reactions = [rxn for rxn in self.reactions if modified_protein not in rxn.reactants or rxn.rxn_type == 'modification']  # remove all reactions in which protein is a reactant, except modifications
-        self.rate_mods = [mod for mod in self.rate_mods if modified_protein != mod.substrate]
+        # if no modifications exist, skip this mutation
+        if len(rxn_choices) == 0:
+            return
 
-        # remove all protein isomers and their dependencies
-        self.remove_isomers(modified_protein)
+        # if no reaction is specified, select one at random
+        if rxn_removed is None:
+            rxn_removed = np.random.choice(rxn_choices)
+
+        # # TEMP STUFF
+        #
+        print('\n')
+        print('before removal')
+        for rxn in self.reactions:
+            if rxn.rxn_type in ['modification', 'catalytic_modification']:
+                print(rxn.reactants, rxn.products)
+
+        # remove selected reaction
+        self.reactions.remove(rxn_removed)
+
+        print('\n')
+        print('removed:', rxn_removed.reactants, rxn_removed.products)
+        print('\n')
+        #
+        # # END TEMP STUFF
+
+        # if modified protein product is not upstream of its substrate and is not formed by
+        # another reaction utilizing the same substrate with an upstream enzyme, remove it and all dependencies
+
+        product = rxn_removed.products[0]
+
+        # check if modification route is bypassed by another parallel or upstream reaction
+        bypassed = False
+        other_catalytic_routes = [rxn.reactants for rxn in self.reactions if rxn.rxn_type in ['catalytic_modification'] and rxn.products[0] == product and rxn != rxn_removed]
+        for route in other_catalytic_routes:
+            if route[0] == rxn_removed.reactants[0] and self.check_if_downstream(route[1], rxn_removed.reactants[0]) is False:
+                bypassed = True
+
+        other_direct_routes = [rxn.reactants for rxn in self.reactions if rxn.rxn_type in ['modification'] and rxn.products[0] == product and rxn != rxn_removed and rxn.reactants[0]<product]
+        if len(other_direct_routes) > 0:
+            bypassed = True
+
+        if product > rxn_removed.reactants[0] and bypassed is False:
+
+            # remove modified form of protein produced by the removed reaction
+            modified_protein = rxn_removed.products[0]
+            self.proteins.remove(modified_protein)
+            self.modified_proteins.remove(modified_protein)
+
+            # remove all modified-protein dependent reactions except modifications (removed later)
+            self.reactions = [rxn for rxn in self.reactions if modified_protein not in rxn.reactants or rxn.rxn_type in ['modification', 'catalytic_modification']]
+            self.rate_mods = [mod for mod in self.rate_mods if modified_protein != mod.substrate]
+
+            # remove all protein isomers and their dependencies
+            self.remove_isomers(modified_protein)
+
+
+        # TEMP
+        print('after removal')
+        for rxn in self.reactions:
+            if rxn.rxn_type in ['modification', 'catalytic_modification']:
+                print(rxn.reactants, rxn.products)
+        print('\n')
+
+
+
 
     def compile_stoichiometry(self, key):
         """
@@ -490,7 +655,7 @@ class Cell:
                 # check for and apply any transcriptional rate modifiers
                 if rxn.rxn_type == 'transcription':
 
-                    activation_strength = [1]
+                    activation_strength = [basal_transcription_rate]
                     for mod in self.rate_mods:
                         if key[mod.target] == key[rxn.products[0]]:
 
@@ -636,7 +801,7 @@ class Cell:
             # find and add corresponding protein to same index
             for rxn in self.reactions:
                 if rxn.rxn_type == 'translation' and rxn.reactants[0] == gene:
-                    node_key[rxn.products[0]] = i
+                    node_key[rxn.products[0]] = len(self.permanent_genes) + i
 
         # reindex unique non-coding-rnas
         for j, gene in enumerate(self.non_coding_rnas):
@@ -663,6 +828,9 @@ class Cell:
                 edge_list.append(edge)
             if rxn.rxn_type == 'modification':
                 edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type)
+                edge_list.append(edge)
+            if rxn.rxn_type == 'catalytic_modification':
+                edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type) # ignore enzyme for visualization
                 edge_list.append(edge)
 
         return edge_list, node_labels
@@ -738,7 +906,7 @@ class Cell:
         # are keys and values are edge_type strings
         up_regulating_edges, down_regulating_edges = {}, {}
         for edge in edge_list:
-            if edge[2] in ['activation', 'modification']:
+            if edge[2] in ['activation', 'modification', 'catalytic_modification']:
                 up_regulating_edges[(edge[0], edge[1])] = edge[2]
             else:
                 down_regulating_edges[(edge[0], edge[1])] = edge[2]
@@ -757,3 +925,28 @@ class Cell:
         fig = plt.gcf()
         fig.set_size_inches(15, 15)
         _ = plt.axis('off')
+
+    def check_if_downstream(self, p1, p2):
+        """
+        Determines whether first modified protein is downstream of the second.
+
+        Parameters:
+            p1 (int) - index of first modified protein
+            p2 (int) - index of second modified protein
+
+        """
+
+        # if first protein has a lower index, it cannot be downstream of second protein
+        if p1 < p2:
+            return False
+
+        # get substrate upstream of p1 and check whether it originated before p2. if not, continue upstream until
+        # all modifications reactions have been exhaustively checked or an upstream substrate has been found.
+        precursor_list = [rxn.reactants[0] for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification'] and rxn.products == p1]
+        while len(precursor_list) > 0:
+            if min(precursor_list) < p2:
+                return False
+            else:
+                precursor_list = [rxn.reactants[0] for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification'] and rxn.products == min(precursor_list)]
+        return True
+

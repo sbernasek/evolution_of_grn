@@ -1,7 +1,7 @@
 __author__ = 'Sebi'
 
 import functools
-from parameters import *
+from modules.parameters import *
 
 
 class Reaction:
