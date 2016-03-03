@@ -34,7 +34,7 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
-        output (int) - indesx of output node
+        output (int) - index of output node
         input_ (int) - index of input node
         plot (bool) - if true, plot output response
         dt (float) - time step
@@ -43,36 +43,36 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
         (bool) - true if cells are connected, false if not
     """
 
-    # create stepwise input signal
-    baseline = Signal(name='baseline', duration=200, dt=dt, signal=None, channels=1)
-    baseline.step(magnitude=1)
-    elevated = Signal(name='elevated', duration=200, dt=dt, signal=None, channels=1)
+    # procedure computes steady state level for an input level of 1, then computes the cumulative output deviation for a
+    # 10 minute interval with input level of 5. If the cumulative deviation exceeds 1e-10, nodes are connected.
+
+    # create elevated input signal
+    elevated = Signal(name='elevated', duration=10, dt=dt, signal=None, channels=1)
     elevated.step(magnitude=5)
-    input_signal = baseline.merge_signals(elevated, shift=True, gap=dt)
+
+    # get steady states
+    steady_states, output_ss = get_ss(cell, output=output, dt=dt)
 
     # run simulation
-    states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
+    states, _, key = cell.simulate(elevated, input_node=input_, ic=steady_states, mode='langevin', retall=True)
 
     # check if output differs
-    output_before_input = states[key[output], 100:200]
-    output_after_input = states[key[output], 200:400]
+    output_response = states[key[output], :]
+    cumulative_output_deviation = sum(abs(output_response-output_ss)*dt)
 
     if plot is True:
         ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-        ax.plot(input_signal.time[0:len(elevated.time)], states[key[output], 0:len(elevated.time)], '-b',
-                label='Before input')
-        ax.plot(input_signal.time[len(elevated.time)+1:-1], states[key[output], len(elevated.time)+1:-1], '-r',
-                label='After input')
-        ax.set_ylim(0, 1.2*max(states[key[output], :]))
+        ax.plot(elevated.time, states[key[output], :], '-b', label='Response to 5x Step')
+        ax.set_ylim(0, 2*max(states[key[output], :]))
         ax.legend(loc=0)
         ax.set_xlabel('Time (min)', fontsize=16)
         ax.set_ylabel('Output', fontsize=16)
         ax.set_title('Input/Output Connection Test', fontsize=16)
 
     # determine average change, if greater than 5% then assume network is connected
-    average_change = abs(np.mean(output_before_input) - np.mean(output_after_input))
+    print(cumulative_output_deviation)
 
-    if average_change > 0.05*np.mean(output_before_input):
+    if cumulative_output_deviation > 1e-10:
         return True
     else:
         return False
@@ -171,7 +171,7 @@ def get_fitness_2(cell, mode='langevin', plot=False):
     input_node = 2
     output_node = 1
 
-    # check to see whether input/output are connected, if not then skip this cell
+    # check to see whether input/output are connected, if not then skip this cell (not necessary, but saves time)
     connected = interaction_check(cell, output=output_node, input_=input_node, dt=dt)
     if connected is False:
         return None, None
