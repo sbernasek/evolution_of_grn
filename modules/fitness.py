@@ -4,7 +4,7 @@ from modules.plotting import *
 from modules.signals import *
 
 
-def get_ss(cell, output, dt=1):
+def get_ss(cell, output, dt=0.1):
     """
     Returns steady state level of specified node given zero initial conditions.
 
@@ -16,13 +16,13 @@ def get_ss(cell, output, dt=1):
     Returns:
         output_ss (float) - steady state level of specified node
     """
-    blank_signal = Signal(name='get_ss', duration=300, dt=dt, signal=None)
+    blank_signal = Signal(name='get_ss', duration=200, dt=dt, signal=None)
     states, _, key = cell.simulate(blank_signal, mode='langevin', retall=True)
     output_ss = states[key[output], -1]
     return output_ss
 
 
-def interaction_check(cell, output, input_, plot=False, dt=1):
+def interaction_check(cell, output, input_, plot=False, dt=0.1):
     """
     Determines whether a specified output node is affected by a particular input node.
 
@@ -38,9 +38,9 @@ def interaction_check(cell, output, input_, plot=False, dt=1):
     """
 
     # create stepwise input signal
-    baseline = Signal(name='baseline', duration=300, dt=dt, signal=None, channels=1)
+    baseline = Signal(name='baseline', duration=200, dt=dt, signal=None, channels=1)
     baseline.step(magnitude=1)
-    elevated = Signal(name='elevated', duration=300, dt=dt, signal=None, channels=1)
+    elevated = Signal(name='elevated', duration=200, dt=dt, signal=None, channels=1)
     elevated.step(magnitude=5)
     input_signal = baseline.merge_signals(elevated, shift=True, gap=dt)
 
@@ -48,8 +48,8 @@ def interaction_check(cell, output, input_, plot=False, dt=1):
     states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
     # check if output differs
-    output_before_input = states[key[output], 100:300]
-    output_after_input = states[key[output], 300:500]
+    output_before_input = states[key[output], 100:200]
+    output_after_input = states[key[output], 200:400]
 
     if plot is True:
         ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
@@ -89,7 +89,7 @@ def get_fitness_1(cell, mode='langevin', plot=False):
  
     dt = 0.1
     plateau_count = 3
-    plateau_duration = 500
+    plateau_duration = 100
     input_node = 0
     output_node = 1
 
@@ -161,7 +161,7 @@ def get_fitness_2(cell, mode='langevin', plot=False):
 
     dt = 0.1
     plateau_count = 3
-    plateau_duration = 500
+    plateau_duration = 100
     input_node = 2
     output_node = 1
 
@@ -185,13 +185,11 @@ def get_fitness_2(cell, mode='langevin', plot=False):
     # run simulation
     states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, mode=mode, retall=True)
 
-    print(key[output_node], 'is index of output in states')
-    print(output_node, 'is output node')
-
+    # retrieve output dynamics
     output = states[key[output_node], :]
 
-    # integrate absolute difference between sensor and its steady state level
-    cumulative_error = sum(abs(output-output_ss)*dt)  # compute integrated area using square rule
+    # integrate absolute difference between output and its steady state level
+    cumulative_error = sum(abs(output-output_ss)*dt)  # integrated area using square rule
 
     # plot dynamics
     if plot is True:

@@ -7,10 +7,12 @@ from modules.fitness import *
 
 
 """
-TO DO:
-    1. add dimerization (i.e. protein-protein cancellation...)
-    2. add catalytic formation of new species (e.g. phosphorylation by kinase)
-    2. remove basal transcription (so always hill controlled)
+TO DO (long term):
+
+
+TO DO (near term):
+    1. write robustness test
+
 """
 
 
@@ -27,7 +29,7 @@ def evaluate(cells):
 
     scores = []
     for cell in cells:
-        score = get_fitness_1(cell, mode='langevin')
+        score = get_fitness_2(cell, mode='langevin')
         scores.append(score)
     return scores
 
@@ -58,16 +60,26 @@ def filter_scores(raw, tol=1e10):
     return filtered
 
 
-def run_simulation():
+def run_simulation(generations=10, population_size=20, mutations_per_division=2, retall=False):
+    """
+    Runs full simulation procedure.
+
+    Parameters:
+        generations (int) - number of growth/selection stages
+        population_size (int) - number of cells per generation
+        mutations_per_division (int) - number of mutations per cell cycle
+
+    Returns:
+        population (list) - list of cells taken from pareto front after specified number of generations
+        score_evolution (dict) - if retall is True, return a dictionary in which keys are generations and values are lists
+        of objective-space coordinates
+    """
 
     # simulation parameters
     cell_type = 'prokaryote' # defines simulation type
-    generations = 3  # number of selection/growth cycles
-    population_size = 10  # total number of cells in each generation
-    mutations_per_division = 2  # number of mutations applied per cell-division
 
     # initialize cell population as a single cell with 3 genes
-    population = [Cell(name=1, initial_genes=2, permanent_genes=1, cell_type=cell_type)]
+    population = [Cell(name=1, initial_genes=0, permanent_genes=2, cell_type=cell_type)]
 
     # grow to desired population
     while len(population) < population_size:
@@ -112,8 +124,13 @@ def run_simulation():
             _, mutant = cell.divide(num_mutations=mutations_per_division)
             population.append(mutant)
 
-    return population
+    if retall is True:
+        return population, score_evolution
+    else:
+        return population
 
+
+# some other stuff should we want it for results/analysis
     # # show topology of a random cell in the final population
     # random_cell = np.random.choice(population)
     # random_cell.show_topology(graph_layout='shell')

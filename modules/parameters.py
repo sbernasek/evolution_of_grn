@@ -10,6 +10,7 @@ n_introns = 4  # roughly 2-8 for eukaryotes, maybe 2 for e.coli and 8 for humans
 PTR_RATE_CONSTANT = 0.1
 CATALYTIC_DEGRADATION_RATE_CONSTANT = 0.1
 MODIFICATION_RATE_CONSTANT = 0.1
+CATALYTIC_MODIFICATION_RATE_CONSTANT = 0.1
 
 # iffy
 basal_transcription_rate = 0.1
@@ -45,6 +46,9 @@ atp_requirements = {
         # phosphorylation
         'modification': [1],
 
+        # enzyme-assisted phosphorylation
+        'catalytic_modification': [1],
+
         # miRNA silencing (could address dicer/ago synthesis, as well as decreasing miRNA synthesis cost)
         'miRNA_silencing': [0],
 
@@ -70,6 +74,9 @@ atp_requirements = {
 
         # phosphorylation
         'modification': [1],
+
+        # enzyme-assisted phosphorylation
+        'catalytic_modification': [1],
 
         # miRNA silencing (could address dicer/ago synthesis, as well as decreasing miRNA synthesis cost)
         'miRNA_silencing': [0],
