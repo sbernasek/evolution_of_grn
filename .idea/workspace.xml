@@ -1,46 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b44289d1-0028-4c70-825e-783604ea1b7d" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/.ipynb_checkpoints/integral_feedback-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/.ipynb_checkpoints/Untitled-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/.ipynb_checkpoints/reversible_modifications-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/Untitled.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/main.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/.name" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/Code.iml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/dictionaries/Sebi.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/encodings.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/inspectionProfiles/Project_Default.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/inspectionProfiles/profiles_settings.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/misc.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/modules.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/scopes/scope_settings.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/vcs.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.idea/workspace.xml" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.ipynb_checkpoints/cell_examples-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.ipynb_checkpoints/fitness_tests-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.ipynb_checkpoints/full_simulations-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/.ipynb_checkpoints/pareto_fronts-checkpoint.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/cells.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/fitness.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/parameters.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/pareto.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/plotting.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/reactions.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/modules/signals.py" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/WithReversibility/reversible_modifications.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/integral_feedback.ipynb" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/Evolution_of_GRN.iml" afterPath="$PROJECT_DIR$/.idea/Evolution_of_GRN.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/modules/cells.py" afterPath="$PROJECT_DIR$/modules/cells.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/modules/fitness.py" afterPath="$PROJECT_DIR$/modules/fitness.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.ipynb_checkpoints/full_simulations-checkpoint.ipynb" afterPath="$PROJECT_DIR$/.ipynb_checkpoints/full_simulations-checkpoint.ipynb" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/full_simulations.ipynb" afterPath="$PROJECT_DIR$/full_simulations.ipynb" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/main.py" afterPath="$PROJECT_DIR$/main.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/misc.xml" afterPath="$PROJECT_DIR$/.idea/misc.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/modules/parameters.py" afterPath="$PROJECT_DIR$/modules/parameters.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-    </list>
+    <list default="true" id="b44289d1-0028-4c70-825e-783604ea1b7d" name="Default" comment="" />
     <ignored path="Evolution_of_GRN.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
