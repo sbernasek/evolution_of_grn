@@ -112,7 +112,7 @@ class Cell:
             # add/remove a node from the network
 
             # get node counts for scaling mutation probabilities
-            num_coding_genes = len(self.removable_genes)
+            num_removable_genes = len(self.removable_genes)
             num_non_coding_genes = len(self.non_coding_rnas)
 
             # set target network size (i.e. approximate node count at which node additional/removal are equally likely)
@@ -122,7 +122,7 @@ class Cell:
             possible_mutations = [
                 (self.add_coding_gene, target_network_size),
                 (self.add_non_coding_gene, target_network_size),
-                (self.remove_coding_gene, num_coding_genes-1),  # subtract one so we never go below 1 gene
+                (self.remove_coding_gene, max(num_removable_genes-1, 0)),  # subtract one so we never go below 1 gene
                 (self.remove_non_coding_gene, num_non_coding_genes)]
 
         elif mutation_type == 'edge':

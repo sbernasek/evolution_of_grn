@@ -12,6 +12,7 @@ TO DO (long term):
 
 TO DO (near term):
     1. write robustness test
+    2. write an abort procedure... when concentrations blow up just end simulation early to save time
 
 """
 
@@ -79,7 +80,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
     cell_type = 'prokaryote' # defines simulation type
 
     # initialize cell population as a single cell with 3 genes
-    population = [Cell(name=1, initial_genes=0, permanent_genes=2, cell_type=cell_type)]
+    population = [Cell(name=1, removable_genes=0, permanent_genes=2, cell_type=cell_type)]
 
     # grow to desired population
     while len(population) < population_size:
@@ -208,7 +209,7 @@ def plot_2D_trajectory(score_evolution, obj=None):
 
 
         color = [gen/len(score_evolution), 0/256, 0/256]
-        ax.plot(x, y, '.k', markersize=gen/len(score_evolution)*30, color=color, label='Generation %d' % gen)
+        ax.plot(x, y, '.k', markersize=25, color=color, label='Generation %d' % gen)
 
         # update maxima for plot axis scaling
         max_x, max_y = max(x + (max_x,)), max(y + (max_y,))
