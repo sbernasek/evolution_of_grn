@@ -9,12 +9,11 @@ from modules.parameters import *
 
 """
 TO DO:
-    1. Could add irreversible dimerization
+    1. Could add dimerization
     2. could allow rate constants to mutate
     3. could add time delay for transcriptional regulators
     4. add color legend to show_topology
-    1. add dimerization (i.e. protein-protein cancellation...)
-    6. remove basal transcription (so always hill controlled)
+    5. remove basal transcription (so always hill controlled)
 """
 
 
