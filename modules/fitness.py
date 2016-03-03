@@ -4,22 +4,28 @@ from modules.plotting import *
 from modules.signals import *
 
 
-def get_ss(cell, output, dt=0.1):
+def get_ss(cell, output=None, dt=0.1):
     """
     Returns steady state level of specified node given zero initial conditions.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
-        output (int) - node of interest
+        output (int) - index of output node, if not None, output steady state is returned
         dt (float) - time step
 
     Returns:
-        output_ss (float) - steady state level of specified node
+        steady_states (np array) - N-dimesnional vector of steady state levels (ordered by re-indexing key)
+        output_ss (float) - steady state level of output node
     """
     blank_signal = Signal(name='get_ss', duration=200, dt=dt, signal=None)
     states, _, key = cell.simulate(blank_signal, mode='langevin', retall=True)
-    output_ss = states[key[output], -1]
-    return output_ss
+    steady_states = states[:, -1]
+
+    if output is None:
+        return steady_states
+    else:
+        output_ss = states[key[output], -1]
+        return steady_states, output_ss
 
 
 def interaction_check(cell, output, input_, plot=False, dt=0.1):
@@ -93,8 +99,8 @@ def get_fitness_1(cell, mode='langevin', plot=False):
     input_node = 0
     output_node = 1
 
-    # get steady state output level
-    output_ss = get_ss(cell, output=output_node, dt=dt)
+    # get steady state levels
+    steady_states, output_ss = get_ss(cell, output=output_node, dt=dt)
 
     # BEGIN TEST
     # create sequence of plateaus for disturbance signal
@@ -107,7 +113,7 @@ def get_fitness_1(cell, mode='langevin', plot=False):
         disturbance = disturbance.merge_signals(next_plateau, shift=True, gap=dt)
 
     # run simulation
-    states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, mode=mode, retall=True)
+    states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, ic=steady_states, mode=mode, retall=True)
     output = states[key[output_node], :]
 
     # integrate absolute difference between sensor and its steady state level
@@ -170,8 +176,8 @@ def get_fitness_2(cell, mode='langevin', plot=False):
     if connected is False:
         return None, None
 
-    # get steady state sensor level
-    output_ss = get_ss(cell, output_node, dt=dt)
+    # get steady state levels
+    steady_states, output_ss = get_ss(cell, output=output_node, dt=dt)
 
     # create sequence of plateaus for disturbance signal
     disturbance = Signal(name='driver', duration=plateau_duration, dt=dt, channels=1)
@@ -183,7 +189,7 @@ def get_fitness_2(cell, mode='langevin', plot=False):
         disturbance = disturbance.merge_signals(next_plateau, shift=True, gap=dt)
 
     # run simulation
-    states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, mode=mode, retall=True)
+    states, energy_usage, key = cell.simulate(disturbance, input_node=input_node, ic=steady_states, mode=mode, retall=True)
 
     # retrieve output dynamics
     output = states[key[output_node], :]

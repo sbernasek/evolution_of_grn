@@ -106,7 +106,7 @@ class Cell:
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
         # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge'], size=1, p=[0.05, 0.95])
+        mutation_type = np.random.choice(['node', 'edge'], size=1, p=[0.2, 0.8])
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -116,7 +116,7 @@ class Cell:
             num_non_coding_genes = len(self.non_coding_rnas)
 
             # set target network size (i.e. approximate node count at which node additional/removal are equally likely)
-            target_network_size = 3
+            target_network_size = 1
 
             # define possible mutations and corresponding probabilities
             possible_mutations = [
@@ -451,7 +451,7 @@ class Cell:
         rxn_selected = np.random.choice(rxn_choices)
         self.reactions.remove(rxn_selected)
 
-    def add_protein_modification(self, substrate=None, enzyme=None, product_specified=None, reversibility_bias=0.5):
+    def add_protein_modification(self, substrate=None, enzyme=None, product_specified=None, reversibility_bias=1):
         """
         Add a reaction in which a protein is converted to a new protein species. The reaction may or may not be
         assisted by another protein.
@@ -460,7 +460,8 @@ class Cell:
             substrate (int) - index of specific protein to be modified
             enzyme (int) - index of enzyme that catalyzes modification
             product_specified (int) - index of modified protein product
-            reversibility_bias (float) - probability that reverse modification is selected vs further modification
+            reversibility_bias (float) - probability that reverse modification is selected vs further modification. by
+            default, multiple sequential modifications are not accessible.
         """
 
         # while loop is used to ensure that a unique reaction is added (no duplicate reactant/product pairs allowed)
