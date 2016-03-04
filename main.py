@@ -11,9 +11,11 @@ TO DO (long term):
 
 
 TO DO (near term):
+    ** ADD NODE LABELS
     1. write robustness test
     2. write an abort procedure... when concentrations blow up just end simulation early to save time
     3. to speed up simulations you could grab the highest rate constant in advance an re-scale the simulation time-step
+    4. add any arbitrary input... maybe a reaction with disturbance as input that can't be removed
 
 """
 

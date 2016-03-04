@@ -14,7 +14,7 @@ CATALYTIC_MODIFICATION_RATE_CONSTANT = 0.1
 
 # iffy
 basal_transcription_rate = 0.1
-dna_binding_affinity = 1e1
+dna_binding_affinity = 1e2
 hill_coefficient = 1
 
 # settled rates
@@ -22,25 +22,6 @@ promoter_strength = 30 * 60 / mrna_length  # mrna/min, based on 30 nt/s
 translation_constant = 10 * 60 / protein_length  # proteins/min, based on 10 amino acids per second
 mrna_decay_constant = 0.05
 protein_decay_constant = 0.025
-
-#
-# # no clue
-# PTR_RATE_CONSTANT = 0.1
-# CATALYTIC_DEGRADATION_RATE_CONSTANT = 0.1
-# MODIFICATION_RATE_CONSTANT = 0.5
-# CATALYTIC_MODIFICATION_RATE_CONSTANT = 2
-#
-# # iffy
-# basal_transcription_rate = 1
-# dna_binding_affinity = 1e1
-# hill_coefficient = 1
-#
-# # settled rates
-# promoter_strength = 30 * 60 / mrna_length  # mrna/min, based on 30 nt/s
-# translation_constant = 10 * 60 / protein_length  # proteins/min, based on 10 amino acids per second
-# mrna_decay_constant = 0.05
-# protein_decay_constant = 1
-
 
 atp_requirements = {
 

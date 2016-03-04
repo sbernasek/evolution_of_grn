@@ -3,6 +3,10 @@ __author__ = 'Sebi'
 from modules.plotting import *
 from modules.signals import *
 
+"""
+INTERACTION TEST ISNT WORKING !
+
+"""
 
 def get_ss(cell, output=None, dt=0.1):
     """
@@ -47,7 +51,7 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
     # 10 minute interval with input level of 5. If the cumulative deviation exceeds 1e-10, nodes are connected.
 
     # create elevated input signal
-    elevated = Signal(name='elevated', duration=10, dt=dt, signal=None, channels=1)
+    elevated = Signal(name='elevated', duration=100, dt=dt, signal=None, channels=1)
     elevated.step(magnitude=5)
 
     # get steady states
@@ -69,10 +73,13 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
         ax.set_ylabel('Output', fontsize=16)
         ax.set_title('Input/Output Connection Test', fontsize=16)
 
-    # determine average change, if greater than 5% then assume network is connected
-    print(cumulative_output_deviation)
+    # print('\n')
+    # print('steady state', output_ss)
+    # print('response', output_response)
+    # print('cumulative', cumulative_output_deviation)
 
-    if cumulative_output_deviation > 1e-10:
+
+    if cumulative_output_deviation > 1:
         return True
     else:
         return False

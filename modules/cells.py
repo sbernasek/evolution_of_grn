@@ -9,11 +9,10 @@ from modules.parameters import *
 
 """
 TO DO:
-    1. Could add dimerization
-    2. could allow rate constants to mutate
+    1. add new types of input (i.e. direct protein level)
+    2. Could add dimerization
     3. could add time delay for transcriptional regulators
-    4. add color legend to show_topology
-    5. remove basal transcription (so always hill controlled)
+    4. add color legend to show_topology function
 """
 
 
@@ -105,7 +104,7 @@ class Cell:
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
         # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge'], size=1, p=[0.2, 0.8])
+        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.5, 0.5, 0.0])
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -149,6 +148,13 @@ class Cell:
                 (self.remove_transcriptional_regulation, num_transcriptional),
                 (self.remove_post_transcriptional_regulation, num_post_transcriptional)]
 
+        elif mutation_type == 'constant':
+
+            # define possible mutations and corresponding probabilities
+            possible_mutations = [
+                (self.change_rate_constant, len(self.reactions)),
+                (self.change_modifier_constant, len(self.rate_mods))]
+
         else:
             print('Mutation type not recognized.')
             return
@@ -162,6 +168,45 @@ class Cell:
 
         # apply mutations
         _ = [mutation() for mutation in mutation_selected]
+
+    def change_rate_constant(self):
+        """
+        Changes a randomly selected reaction rate constant. This includes both rate constants and dissociation/cooperativity
+        constants.
+        """
+        index = np.random.randint(0, len(self.reactions))
+        rxn = self.reactions[index]
+        rxn.rate_constant *= (np.random.random()*1.5 + 0.5)
+        self.reactions[index] = rxn
+
+    def change_modifier_constant(self):
+        """
+        Changes a randomly selected transcriptional modification constant. This includes promotion strengths,
+        dissociation constants, and cooperativity constants.
+        """
+
+        # get a random transcriptional modifier
+        index = np.random.randint(0, len(self.rate_mods))
+        mod = self.rate_mods[index]
+
+        # select the type of constant to be updated
+        if mod.mod_type == 'activation':
+            constant = np.random.choice(['promotion_strength', 'dissociation_constant', 'cooperativity'], p=[0.4, 0.4, 0.2])
+        else:
+            constant = np.random.choice(['dissociation_constant', 'cooperativity'], p=[0.5, 0.5])
+
+        # update the selected type of constant by
+        if constant == 'promotion_strength':
+            mod.promotion_strength *= (np.random.random()*1.5 + 0.5)
+
+        elif constant == 'dissociation_constant':
+            mod.dissociation_constant *= (np.random.random()*1.5 + 0.5)
+
+        elif constant == 'cooperativity':
+            mod.cooperativity *= (np.random.random()*1.5 + 0.5)
+
+        # add modifier back to network
+        self.rate_mods[index] = mod
 
     def add_coding_gene(self, removable=True):
         """
@@ -617,7 +662,7 @@ class Cell:
                 # check for and apply any transcriptional rate modifiers
                 if rxn.rxn_type == 'transcription':
 
-                    activation_strength = [basal_transcription_rate]
+                    activation_strength = [rxn.rate_constant]
                     for mod in self.rate_mods:
                         if key[mod.target] == key[rxn.products[0]]:
 
