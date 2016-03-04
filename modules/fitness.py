@@ -4,13 +4,12 @@ from modules.plotting import *
 from modules.signals import *
 
 """
-INTERACTION TEST ISNT WORKING !
 
 """
 
 def get_ss(cell, output=None, dt=0.1):
     """
-    Returns steady state level of specified node given zero initial conditions.
+    Returns steady state level of specified node given zero initial conditions and no disturbance signal.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
@@ -31,15 +30,74 @@ def get_ss(cell, output=None, dt=0.1):
         output_ss = states[key[output], -1]
         return steady_states, output_ss
 
+def interaction_check_topographical(cell, input_, output):
+    """
+        Determines whether input influences output.
 
-def interaction_check(cell, output, input_, plot=False, dt=0.1):
+        Parameters:
+            input_ (int) - input node index
+            output (int) - output node index
+        """
+
+    # initialize dependent node queue
+    dependents = [input_]
+
+    # toggle for whether or not output is activated by input or output is constitutively active
+    output_activated = False
+    constitutively_active = False
+
+    # if output is a coded protein, constitutive expression of its corresponding gene will enable downregulating edges
+    # to influence output level
+    if [output] in [rxn.products for rxn in cell.reactions if rxn.rxn_type == 'translation']:
+        gene = [rxn.reactants[0] for rxn in cell.reactions if rxn.rxn_type == 'translation' and output in rxn.products][0]
+
+    # if output is a gene, constitutive expression will enable downregulating edges
+    # to influence output level
+    if output in (cell.removable_genes + cell.permanent_genes):
+        gene = output
+
+    # check if gene is constitutively active
+    gene_transcription_rxn = [rxn for rxn in cell.reactions if rxn.rxn_type == 'transcription' and gene in rxn.products][0]
+    if gene_transcription_rxn.rate_constant > 0:
+        constitutively_active = True
+
+    # identify all dependent nodes by walking through the network
+    for dependent in dependents:
+
+        # find all nodes downstream of current dependent
+        children = []
+        [children.extend(item) for item in [(rxn.products + rxn.consumed) for rxn in cell.reactions if dependent in rxn.reactants]]
+        children.extend([mod.target for mod in cell.rate_mods if dependent == mod.substrate])
+        children = list(set(children))
+
+        # determine whether output gene is activated
+        for mod in cell.rate_mods:
+            if mod.substrate == dependent and mod.target == gene and mod.mod_type == 'activation':
+                output_activated = True
+
+        # if child is not currently included in dependents, add it to the queue
+        for child in children:
+            if child not in dependents:
+                dependents.append(child)
+
+    if output in dependents:
+
+        if output_activated is True or constitutively_active is True:
+            return True
+
+        else:
+            return False
+    else:
+        return False
+
+def interaction_check_numerical(cell, input_, output, plot=False, dt=0.1):
     """
     Determines whether a specified output node is affected by a particular input node.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
-        output (int) - index of output node
         input_ (int) - index of input node
+        output (int) - index of output node
         plot (bool) - if true, plot output response
         dt (float) - time step
 
@@ -51,7 +109,7 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
     # 10 minute interval with input level of 5. If the cumulative deviation exceeds 1e-10, nodes are connected.
 
     # create elevated input signal
-    elevated = Signal(name='elevated', duration=100, dt=dt, signal=None, channels=1)
+    elevated = Signal(name='elevated', duration=10, dt=dt, signal=None, channels=1)
     elevated.step(magnitude=5)
 
     # get steady states
@@ -59,6 +117,10 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
 
     # run simulation
     states, _, key = cell.simulate(elevated, input_node=input_, ic=steady_states, mode='langevin', retall=True)
+
+    # if simulation blows up, return None
+    if None in [state for state in states[:, -1]]:
+        return None
 
     # check if output differs
     output_response = states[key[output], :]
@@ -72,12 +134,6 @@ def interaction_check(cell, output, input_, plot=False, dt=0.1):
         ax.set_xlabel('Time (min)', fontsize=16)
         ax.set_ylabel('Output', fontsize=16)
         ax.set_title('Input/Output Connection Test', fontsize=16)
-
-    # print('\n')
-    # print('steady state', output_ss)
-    # print('response', output_response)
-    # print('cumulative', cumulative_output_deviation)
-
 
     if cumulative_output_deviation > 1:
         return True
@@ -108,6 +164,10 @@ def get_fitness_1(cell, mode='langevin', plot=False):
 
     # get steady state levels
     steady_states, output_ss = get_ss(cell, output=output_node, dt=dt)
+
+    # if no steady state exists (simulation blows up), return None
+    if output_ss is None:
+        return None, None
 
     # BEGIN TEST
     # create sequence of plateaus for disturbance signal
@@ -179,8 +239,9 @@ def get_fitness_2(cell, mode='langevin', plot=False):
     output_node = 1
 
     # check to see whether input/output are connected, if not then skip this cell (not necessary, but saves time)
-    connected = interaction_check(cell, output=output_node, input_=input_node, dt=dt)
-    if connected is False:
+    # similarly, if connected is None (simulation blows up), skip this cell
+    connected = interaction_check_topographical(cell, input_=input_node, output=output_node)
+    if connected is False or connected is None:
         return None, None
 
     # get steady state levels

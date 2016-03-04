@@ -418,19 +418,23 @@ class Cell:
         selected_mod = np.random.choice(self.rate_mods)
         self.rate_mods.remove(selected_mod)
 
-    def add_post_transcriptional_regulation(self):
+    def add_post_transcriptional_regulation(self, target=None):
         """
         Add a post transcriptional regulatory interaction between a non-coding mRNA and another randomly chosen mRNA.
+
+        Parameter:
+            targer (int) - index of target transcript
         """
 
         # select a non-coding rna
-        rna1 = np.random.choice(self.non_coding_rnas)
+        micro_rna = np.random.choice(self.non_coding_rnas)
 
-        # select any target rna
-        rna2 = np.random.choice(self.non_coding_rnas + self.coding_rnas)
+        # select any target rna if none were provided
+        if target is None:
+            target = np.random.choice(self.non_coding_rnas + self.coding_rnas)
 
         # create post-transcriptional modification reaction
-        rxn = Reaction(reactants=[rna1, rna2], products=None, rate_constant=PTR_RATE_CONSTANT, consumed=[rna1, rna2], rxn_type='miRNA_silencing', cell_type=self.cell_type)
+        rxn = Reaction(reactants=[micro_rna, target], products=None, rate_constant=PTR_RATE_CONSTANT, consumed=[micro_rna, target], rxn_type='miRNA_silencing', cell_type=self.cell_type)
         self.reactions.append(rxn)
 
     def remove_post_transcriptional_regulation(self):
@@ -662,11 +666,14 @@ class Cell:
                 # check for and apply any transcriptional rate modifiers
                 if rxn.rxn_type == 'transcription':
 
+                    # set base rate to one
+                    rate = 1
+
                     activation_strength = [rxn.rate_constant]
                     for mod in self.rate_mods:
-                        if key[mod.target] == key[rxn.products[0]]:
+                        if mod.target == rxn.products[0]:
 
-                            # get transcription factor concentration
+                            # get transcription factor index
                             tf = key[mod.substrate]
 
                             # compute total transcription rate as max(activation_strengths)*product(repression_strengths)
@@ -739,6 +746,11 @@ class Cell:
         dt = disturbances.dt
         for i, t in enumerate(disturbances.time[:-1]):
 
+            # if any of the states blow up, abort procedure
+            if np.max(states[:, i] > 1e10):
+                states[:, i+1] = None
+                break
+
             # determine reaction rates
             rxn_rates = self.get_rate_vector(states[:, i], reindexing_key)
 
@@ -747,7 +759,7 @@ class Cell:
                 disturbance_impact = disturbances.signal[0][i]
                 disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
                                  if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
-                rxn_rates[disturbed_rxn[0]] *= disturbance_impact
+                rxn_rates[disturbed_rxn[0]] = disturbance_impact
 
             # determine reaction extents
             if mode == 'tau_leaping':
