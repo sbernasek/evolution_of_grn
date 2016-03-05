@@ -37,12 +37,12 @@ def check_stability(cell, output, input_=None, max_dt=1, min_dt=0.1):
 
         if input_ is None:
             # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=100, dt=dt, signal=None)
+            input_signal = Signal(name='get_ss', duration=20, dt=dt, signal=None)
             states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
 
         else:
             # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=100, dt=dt, channels=1)
+            input_signal = Signal(name='get_ss', duration=20, dt=dt, channels=1)
             input_signal.step(1)
             states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
@@ -64,7 +64,7 @@ def check_stability(cell, output, input_=None, max_dt=1, min_dt=0.1):
             acceptable = True
             return acceptable, dt
         else:
-            dt = dt / 10
+            dt /= 10
 
 
 def get_steady_states(cell, output=None, input_=None, dt=0.1, plot=False):
