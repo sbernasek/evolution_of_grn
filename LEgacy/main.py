@@ -7,24 +7,22 @@ from modules.fitness import *
 
 
 """
-TO DO:
-    0. Right now we are producing tons of shitty networks that don't respond stably... we need to fix this.
+TO DO (long term):
+
+
+TO DO (near term):
     1. write robustness test
     2. add any arbitrary input... maybe a reaction with disturbance as input that can't be removed
     3. add input/output to graph
-    4. minor point... could encourage more mutations for the initial population to encourage diverse starting points
 """
 
 
-def evaluate(f, cells, input_node=None, output_node=None):
+def evaluate(cells):
     """
     Score the performance of all cells.
 
     Parameters:
-        f (function) - test function to be applied to each cell
         cells (list) - list of cell objects
-        input_node (int) - index of node to which input signal is sent
-        output_node (int) - index of node from which output is read
 
     Returns:
         scores (list) - list of objective-space coordinates for each cell in cells
@@ -32,7 +30,7 @@ def evaluate(f, cells, input_node=None, output_node=None):
 
     scores = []
     for cell in cells:
-        score = f(cell, mode='langevin', dt=None,  input_node=input_node, output_node=output_node)
+        score = get_fitness_2(cell, mode='langevin')
         scores.append(score)
     return scores
 
@@ -78,49 +76,35 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
         of objective-space coordinates
     """
 
-    # define input and output to be tested
-    input_node = 2
-    output_node = 1
-
     # simulation parameters
     cell_type = 'prokaryote' # defines simulation type
 
-    # initialize cell population as a single cell with 3 genes, 2 of which are permanent (corresponds to get_fitness_2)
+    # initialize cell population as a single cell with 3 genes
     population = [Cell(name=1, removable_genes=0, permanent_genes=2, cell_type=cell_type)]
 
-    # initialize dictionary for storing scores
+    # grow to desired population
+    while len(population) < population_size:
+
+        # clone a randomly selected cell
+        cell = np.random.choice(population)
+        cell, mutant = cell.divide(num_mutations=mutations_per_division)
+        population.append(mutant)
+
+    # store scores
     score_evolution = {}
 
     # iterate through selection+growth cycles
     for gen in range(0, generations):
 
-        # encourage extra mutations in initial population
-        if gen == 0:
-            mutations_used = 5
-        else:
-            mutations_used = mutations_per_division
-
-        # grow remaining cells back to desired population size
-        attempt = 0
-        while len(population) < population_size:
-            attempt += 1
-
-
-            cell = np.random.choice(population)
-            _, mutant = cell.divide(num_mutations=mutations_used)
-
-            # only accept cells in which the output is dependent upon the input, and a stable steady state is achieved
-            connected = interaction_check_topographical(mutant, input_=input_node, output=output_node)
-            stable = check_stability(mutant, output_node, input_=input_node, dt=1)
-            if connected is True and stable is True:
-                population.append(mutant)
-        print('Generation ', gen, 'required', attempt, 'divisions to repopulate')
+        # get topology distribution for current generation's networks
+        edge_counts, node_counts = zip(*list(map(lambda x: (len(x[0]), len(x[1])), [cell.get_topology() for cell in population])))
+        print('Generation', gen, ': %g edges in average network' % np.mean(edge_counts))
 
         # run dynamics and score each cell
-        scores = evaluate(get_fitness_2, population, input_node, output_node)
+        scores = evaluate(population)
 
         # filter any scores with None, inf, nan, or values >1e10
-        scores_considered = filter_scores(scores, tol=1e15)
+        scores_considered = filter_scores(scores, tol=1e10)
 
         # if valid scores remain, select pareto front. if no valid scores remain, re-seed population
         if len(scores_considered) > 0:
@@ -135,9 +119,11 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
         # store selected scores
         score_evolution[gen] = scores_selected
 
-        # get topology distribution for current generation's networks
-        #edge_counts, node_counts = zip(*list(map(lambda x: (len(x[0]), len(x[1])), [cell.get_topology() for cell in population])))
-        #print('Generation', gen, ': %g edges in average selected network' % np.mean(edge_counts))
+        # grow remaining cells back to desired population size
+        while len(population) < population_size:
+            cell = np.random.choice(population)
+            _, mutant = cell.divide(num_mutations=mutations_per_division)
+            population.append(mutant)
 
     if retall is True:
         return population, score_evolution

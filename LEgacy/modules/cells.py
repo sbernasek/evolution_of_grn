@@ -10,11 +10,8 @@ from modules.parameters import *
 """
 TO DO:
     1. add new types of input (i.e. direct protein level)
-    2. add edge modifiers to show topography
-
-Long term:
-    1. dimerization + reverse
-    2. time delays for regulation (nuclear translocation)
+    2. Could add dimerization
+    3. could add time delay for transcriptional regulators
 """
 
 
@@ -106,7 +103,7 @@ class Cell:
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
         # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.3, 0.6, 0.1])
+        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.5, 0.5, 0.0])
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -143,7 +140,7 @@ class Cell:
             possible_mutations = [
                 (self.add_catalytic_degradation, num_proteins),
                 (self.add_protein_modification, num_proteins),
-                (self.add_transcriptional_regulation, num_rnas*2),
+                (self.add_transcriptional_regulation, num_rnas),
                 (self.add_post_transcriptional_regulation, num_non_coding_mrna),
                 (self.remove_catalytic_degradation, num_catalytic_degradation),
                 (self.remove_protein_modification, num_protein_mods),
@@ -797,8 +794,7 @@ class Cell:
 
         Returns:
             edge_list (list) -  gene regulatory network topology composed of (regulatory_gene, target_gene, regulation_type) tuples
-            node_labels (dict) - dictionary of node labels in which keys are new indices and values are node types
-            node_key (dict) - dictionary mapping old to new indices in which keys are old indices and values are new
+            node_labels (dict) - dictionary of node labels in which keys are node indices and values are node types
         """
 
         # generate (node_from, node_to, edge_type) tuples
@@ -855,7 +851,7 @@ class Cell:
                 edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type) # ignore enzyme for visualization
                 edge_list.append(edge)
 
-        return edge_list, node_labels, node_key
+        return edge_list, node_labels
 
     def show_topology(self, graph_layout='shell'):
         """
@@ -866,7 +862,10 @@ class Cell:
         """
 
         # get network topology
-        edge_list, node_labels, node_key = self.get_topology()
+        edge_list, node_labels = self.get_topology()
+
+
+        #node_numbers =
 
         if len(edge_list) == 0:
             print('Network has no edges.')

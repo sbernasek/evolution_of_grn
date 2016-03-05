@@ -7,140 +7,28 @@ from modules.signals import *
 
 """
 
-
-def check_stability(cell, output, input_=None, dt=1):
-
-    acceptable = False
-    time_step = dt
-
-    while acceptable is False:
-
-        # break loop if more than three attempts to find a stable solution are made
-        if time_step < 0.1:
-            return False
-
-        if input_ is None:
-            # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=100, dt=time_step, signal=None)
-            states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
-
-        else:
-            # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=100, dt=time_step, channels=1)
-            input_signal.step(1)
-            states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
-
-        # if states are numerically stable, accept them. if not, reduce timestep
-        positive, finite, nonzero, real = False, False, False, False
-        if sum([level < 0 for level in states[key[output], :]]) == 0:
-            positive = True
-
-        if max([abs(level) for level in states[key[output], :]]) < 1e10:
-            finite = True
-
-        if sum(states[key[output], :]) > 1e-100:
-            nonzero = True
-
-        if sum(np.isnan(states[key[output], :])) == 0:
-            real = True
-
-        if positive is True and finite is True and nonzero is True and real is True:
-            return True
-        else:
-            time_step = time_step / 10
-
-
-def get_ss(cell, output=None, input_=None, dt=1, plot=False):
+def get_ss(cell, output=None, dt=0.1):
     """
     Returns steady state level of specified node given zero initial conditions and no disturbance signal.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
         output (int) - index of output node, if not None, output steady state is returned
-        input (int) - index of input node, if not None, unit step signal is sent to input
         dt (float) - time step
-        plot (bool) - if True, plot prcedure
 
     Returns:
         steady_states (np array) - N-dimesnional vector of steady state levels (ordered by re-indexing key)
         output_ss (float) - steady state level of output node
-        dt (float) - final time-step used in steady state check, assumed to be maximum to produce stable solution
     """
-
-    acceptable = False
-    time_step = dt
-
-    while acceptable is False:
-
-        # break loop if time step is too small
-        if time_step < 0.1:
-            return None, None, time_step
-
-        if input_ is None:
-            # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=200, dt=time_step, signal=None)
-            states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
-
-        else:
-            # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=200, dt=time_step, channels=1)
-            input_signal.step(1)
-            states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
-
-        # get steady states
-        steady_states = states[:, -1]
-
-        # if steady states are numerically stable, accept them. if not, reduce timestep
-        positive, finite, real, stable = False, False, False, True
-        if sum([ss < 0 for ss in steady_states]) == 0:
-            positive = True
-
-        if max([abs(ss) for ss in steady_states]) < 1e10 and sum(steady_states) > 1e-100:
-            finite = True
-
-        if sum(np.isnan(steady_states)) == 0:
-            real = True
-
-        if output is not None:
-            if np.var(states[key[output], int(0.9*len(states[key[output], :])):-1]) > 0.1 * steady_states[key[output]]:
-                stable = False
-
-        if positive is True and finite is True and real is True and stable is True:
-            acceptable = True
-        else:
-            time_step = time_step / 10
-
-    # plot input and output trajectories (optional)
-    if plot is True:
-
-        ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-
-        reverse_key = {new_index: old_index for old_index, new_index in key.items()}
-        for state, trajectory in enumerate(states):
-
-            # plot input
-            if reverse_key[state] == input_:
-                ax.plot(input_signal.time, trajectory, '-b', linewidth=5, label='Input')
-
-            # plot output
-            elif reverse_key[state] == output:
-                ax.plot(input_signal.time, trajectory, '-r', linewidth=5, label='Output')
-                ax.set_ylim(0, 1.5*np.max(trajectory))
-
-            # plot everything else
-            else:
-                ax.plot(input_signal.time, trajectory, '-k', linewidth=2)
-
-        ax.legend(loc=0)
-        ax.set_xlabel('Time (min)', fontsize=16)
-        ax.set_ylabel('Species Levels', fontsize=16)
-        ax.set_title('Steady State Test', fontsize=16)
+    blank_signal = Signal(name='get_ss', duration=200, dt=dt, signal=None)
+    states, _, key = cell.simulate(blank_signal, mode='langevin', retall=True)
+    steady_states = states[:, -1]
 
     if output is None:
-        return steady_states, time_step
+        return steady_states
     else:
         output_ss = states[key[output], -1]
-        return steady_states, output_ss, time_step
+        return steady_states, output_ss
 
 
 def interaction_check_topographical(cell, input_, output):
@@ -152,6 +40,13 @@ def interaction_check_topographical(cell, input_, output):
             output (int) - output node index
         """
 
+    # initialize dependent node queue
+    dependents = [input_]
+
+    # toggle for whether or not output is activated by input or output is constitutively active
+    output_activated = False
+    constitutively_active = False
+
     # if output is a coded protein, constitutive expression of its corresponding gene will enable downregulating edges
     # to influence output level
     if [output] in [rxn.products for rxn in cell.reactions if rxn.rxn_type == 'translation']:
@@ -162,45 +57,17 @@ def interaction_check_topographical(cell, input_, output):
     if output in (cell.removable_genes + cell.permanent_genes):
         gene = output
 
-    # initialize dependent node queue
-    upregulated_dependents = [input_]
-
-    # identify all upregulated downstream nodes, if output gene is amongst them then output is positively upregulated
-    for dependent in upregulated_dependents:
-
-        # downstream of output or its corresponding gene is irrelevant
-        if dependent == gene or dependent == output:
-            return True
-
-        # find all nodes downstream of current dependent
-        children = []
-        [children.extend(item) for item in [rxn.products for rxn in cell.reactions if dependent in rxn.reactants]]
-        children.extend([mod.target for mod in cell.rate_mods if dependent == mod.substrate and mod.mod_type == 'activation'])
-        children = list(set(children))
-
-        # if child is not currently included in dependents, add it to the queue
-        for child in children:
-            if child not in upregulated_dependents:
-                upregulated_dependents.append(child)
-
-    # initialize dependent node queue
-    dependents = [input_]
-
-    # toggle for whether or not output is activated by input or output is constitutively active
-    in_graph, constitutively_active = False, False
-
     # check if gene is constitutively active
     gene_transcription_rxn = [rxn for rxn in cell.reactions if rxn.rxn_type == 'transcription' and gene in rxn.products][0]
     if gene_transcription_rxn.rate_constant > 0:
         constitutively_active = True
 
-    # identify all downstream nodes by walking through the network
+    # identify all dependent nodes by walking through the network
     for dependent in dependents:
 
-        # downstream of output or its corresponding gene is irrelevant
-        if dependent == gene or dependent == output:
-            in_graph = True
-            break
+        # downstream of output is irrelevant
+        if dependent == gene:
+            continue
 
         # find all nodes downstream of current dependent
         children = []
@@ -208,16 +75,25 @@ def interaction_check_topographical(cell, input_, output):
         children.extend([mod.target for mod in cell.rate_mods if dependent == mod.substrate])
         children = list(set(children))
 
+        # determine whether output gene is activated
+        for mod in cell.rate_mods:
+            if mod.substrate == dependent and mod.target == gene and mod.mod_type == 'activation':
+                output_activated = True
+
         # if child is not currently included in dependents, add it to the queue
         for child in children:
             if child not in dependents:
                 dependents.append(child)
 
-    if in_graph is True and constitutively_active is True:
-        return True
+    if output in dependents:
+
+        if output_activated is True or constitutively_active is True:
+            return True
+
+        else:
+            return False
     else:
         return False
-
 
 def interaction_check_numerical(cell, input_, output, plot=False, dt=0.1):
     """
@@ -270,7 +146,7 @@ def interaction_check_numerical(cell, input_, output, plot=False, dt=0.1):
         return False
 
 
-def get_fitness_1(cell, input_node=0, output_node=1, mode='langevin', dt=0.1, plot=False):
+def get_fitness_1(cell, mode='langevin', plot=False):
     """
     VERSION: VARIES REPORTER TRANSCRIPTION RATE AND TRACKS DEVIATION FROM STEADY STATE
 
@@ -278,24 +154,24 @@ def get_fitness_1(cell, input_node=0, output_node=1, mode='langevin', dt=0.1, pl
 
     Parameters:
         cell (cell object) - cell to be tested
-        input_node (int) - index of node to which disturbance signal is sent
-        output_node (int) - index of node from which output signal is read
         mode (str) - numerical method used to solve system dynamics, either 'langevin' or 'tau_leaping'
-        dt (float) - time step for numerical solver
         plot (bool) - if true, plot dynamic simulation
 
     Returns:
         score (list) - list of objective-space coordinates, namely [cumulative_error, energy_usage]
     """
  
+    dt = 0.1
     plateau_count = 3
-    plateau_duration = 200
+    plateau_duration = 100
+    input_node = 0
+    output_node = 1
 
     # get steady state levels
-    steady_states, output_ss = get_ss(cell, output=output_node, input_=input_node)
+    steady_states, output_ss = get_ss(cell, output=output_node, dt=dt)
 
-    # if no stable steady states are found, return None
-    if None in steady_states:
+    # if no steady state exists (simulation blows up), return None
+    if output_ss is None:
         return None, None
 
     # BEGIN TEST
@@ -346,7 +222,7 @@ def get_fitness_1(cell, input_node=0, output_node=1, mode='langevin', dt=0.1, pl
     return [cumulative_error, energy_usage]
 
 
-def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=None, plot=False):
+def get_fitness_2(cell, mode='langevin', plot=False):
     """
     VERSION: VARIES TRANSCRIPTION OF NON-REPORTER PERMANENT GENE AND TRACKS REPORTER DEVIATION FROM STEADY STATE
 
@@ -354,26 +230,18 @@ def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=N
 
     Parameters:
         cell (cell object) - cell to be tested
-        input_node (int) - index of node to which disturbance signal is sent
-        output_node (int) - index of node from which output signal is read
         mode (str) - numerical method used to solve system dynamics, either 'langevin' or 'tau_leaping'
-        dt (float) - time step for numerical solver, if None then max stable value obtained from steady state simulation
         plot (bool) - if true, plot dynamic simulation
 
     Returns:
         score (list) - list of objective-space coordinates, namely [cumulative_error, energy_usage]
     """
 
-    # set plateau count and duration for input signal
+    dt = 0.1
     plateau_count = 3
-    plateau_duration = 200
-
-    # set default input/output if none specified
-    if input_node is None:
-        input_node = 2
-
-    if output_node is None:
-        output_node = 1
+    plateau_duration = 100
+    input_node = 2
+    output_node = 1
 
     # check to see whether input/output are connected, if not then skip this cell (not necessary, but saves time)
     # similarly, if connected is None (simulation blows up), skip this cell
@@ -381,14 +249,8 @@ def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=N
     if connected is False or connected is None:
         return None, None
 
-    # get steady state levels, if no stable steady states are found then return None and move on
-    steady_states, output_ss, dt_suggested = get_ss(cell, output=output_node, input_=input_node)
-    if steady_states is None:
-        return None, None
-
-    # if no timestep was provided, use the one generated in the steady state simulation
-    if dt is None:
-        dt = dt_suggested
+    # get steady state levels
+    steady_states, output_ss = get_ss(cell, output=output_node, dt=dt)
 
     # create sequence of plateaus for disturbance signal
     disturbance = Signal(name='driver', duration=plateau_duration, dt=dt, channels=1)
