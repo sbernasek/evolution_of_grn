@@ -8,25 +8,41 @@ from modules.signals import *
 """
 
 
-def check_stability(cell, output, input_=None, dt=1):
+def check_stability(cell, output, input_=None, max_dt=1, min_dt=0.1):
+    """
+    Progressively decreases step size until stable (positive, finite, nonzero, and real for all values) response is
+    achieved. If no stable response is achieved by the minimum step size, system is deemed unstable.
+
+    Parameters:
+        cell (cell object) - cell undergoing stability test
+        output (int) - index of output node
+        input_ (int) - index of input node
+        max_dt (float) - starting timestep (maximum possible returned)
+        min_dt (float) - minimum allowable timestep (minimum possible returned)
+
+    Returns:
+        stable (bool) - if True, system exhibited stable response at current time step
+        dt (float) - minimum stable time step
+
+    """
 
     acceptable = False
-    time_step = dt
+    dt = max_dt
 
     while acceptable is False:
 
         # break loop if more than three attempts to find a stable solution are made
-        if time_step < 0.1:
-            return False
+        if dt < min_dt:
+            return acceptable, None
 
         if input_ is None:
             # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=100, dt=time_step, signal=None)
+            input_signal = Signal(name='get_ss', duration=100, dt=dt, signal=None)
             states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
 
         else:
             # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=100, dt=time_step, channels=1)
+            input_signal = Signal(name='get_ss', duration=100, dt=dt, channels=1)
             input_signal.step(1)
             states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
@@ -45,12 +61,13 @@ def check_stability(cell, output, input_=None, dt=1):
             real = True
 
         if positive is True and finite is True and nonzero is True and real is True:
-            return True
+            acceptable = True
+            return acceptable, dt
         else:
-            time_step = time_step / 10
+            dt = dt / 10
 
 
-def get_ss(cell, output=None, input_=None, dt=1, plot=False):
+def get_steady_states(cell, output=None, input_=None, dt=0.1, plot=False):
     """
     Returns steady state level of specified node given zero initial conditions and no disturbance signal.
 
@@ -58,57 +75,27 @@ def get_ss(cell, output=None, input_=None, dt=1, plot=False):
         cell (cell object) - gene regulatory network of interest
         output (int) - index of output node, if not None, output steady state is returned
         input (int) - index of input node, if not None, unit step signal is sent to input
-        dt (float) - time step
+        dt (float) - time step used
         plot (bool) - if True, plot prcedure
 
     Returns:
         steady_states (np array) - N-dimesnional vector of steady state levels (ordered by re-indexing key)
         output_ss (float) - steady state level of output node
-        dt (float) - final time-step used in steady state check, assumed to be maximum to produce stable solution
     """
 
-    acceptable = False
-    time_step = dt
+    if input_ is None:
+        # if no input node is specified, get steady state values in the absence of any driving signal
+        input_signal = Signal(name='get_ss', duration=200, dt=dt, signal=None)
+        states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
 
-    while acceptable is False:
+    else:
+        # if input node is specified, get steady state values following unit step input to unit node
+        input_signal = Signal(name='get_ss', duration=200, dt=dt, channels=1)
+        input_signal.step(1)
+        states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
-        # break loop if time step is too small
-        if time_step < 0.1:
-            return None, None, time_step
-
-        if input_ is None:
-            # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=200, dt=time_step, signal=None)
-            states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
-
-        else:
-            # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=200, dt=time_step, channels=1)
-            input_signal.step(1)
-            states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
-
-        # get steady states
-        steady_states = states[:, -1]
-
-        # if steady states are numerically stable, accept them. if not, reduce timestep
-        positive, finite, real, stable = False, False, False, True
-        if sum([ss < 0 for ss in steady_states]) == 0:
-            positive = True
-
-        if max([abs(ss) for ss in steady_states]) < 1e10 and sum(steady_states) > 1e-100:
-            finite = True
-
-        if sum(np.isnan(steady_states)) == 0:
-            real = True
-
-        if output is not None:
-            if np.var(states[key[output], int(0.9*len(states[key[output], :])):-1]) > 0.1 * steady_states[key[output]]:
-                stable = False
-
-        if positive is True and finite is True and real is True and stable is True:
-            acceptable = True
-        else:
-            time_step = time_step / 10
+    # get steady states
+    steady_states = states[:, -1]
 
     # plot input and output trajectories (optional)
     if plot is True:
@@ -137,10 +124,10 @@ def get_ss(cell, output=None, input_=None, dt=1, plot=False):
         ax.set_title('Steady State Test', fontsize=16)
 
     if output is None:
-        return steady_states, time_step
+        return steady_states
     else:
         output_ss = states[key[output], -1]
-        return steady_states, output_ss, time_step
+        return steady_states, output_ss
 
 
 def interaction_check_topographical(cell, input_, output):
@@ -242,7 +229,7 @@ def interaction_check_numerical(cell, input_, output, plot=False, dt=0.1):
     elevated.step(magnitude=5)
 
     # get steady states
-    steady_states, output_ss = get_ss(cell, output=output, dt=dt)
+    steady_states, output_ss = get_steady_states(cell, output=output, dt=dt)
 
     # run simulation
     states, _, key = cell.simulate(elevated, input_node=input_, ic=steady_states, mode='langevin', retall=True)
@@ -292,7 +279,7 @@ def get_fitness_1(cell, input_node=0, output_node=1, mode='langevin', dt=0.1, pl
     plateau_duration = 200
 
     # get steady state levels
-    steady_states, output_ss = get_ss(cell, output=output_node, input_=input_node)
+    steady_states, output_ss = get_steady_states(cell, output=output_node, input_=input_node)
 
     # if no stable steady states are found, return None
     if None in steady_states:
@@ -381,14 +368,15 @@ def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=N
     if connected is False or connected is None:
         return None, None
 
-    # get steady state levels, if no stable steady states are found then return None and move on
-    steady_states, output_ss, dt_suggested = get_ss(cell, output=output_node, input_=input_node)
-    if steady_states is None:
+    # check stability and get time step
+    stable, dt = check_stability(cell, output_node, input_=input_node)
+    if stable is False:
         return None, None
 
-    # if no timestep was provided, use the one generated in the steady state simulation
-    if dt is None:
-        dt = dt_suggested
+    # get steady state levels, if no stable steady states are found then return None and move on
+    steady_states, output_ss = get_steady_states(cell, output=output_node, input_=input_node)
+    if steady_states is None:
+        return None, None
 
     # create sequence of plateaus for disturbance signal
     disturbance = Signal(name='driver', duration=plateau_duration, dt=dt, channels=1)

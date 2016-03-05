@@ -105,13 +105,12 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
         while len(population) < population_size:
             attempt += 1
 
-
             cell = np.random.choice(population)
             _, mutant = cell.divide(num_mutations=mutations_used)
 
             # only accept cells in which the output is dependent upon the input, and a stable steady state is achieved
             connected = interaction_check_topographical(mutant, input_=input_node, output=output_node)
-            stable = check_stability(mutant, output_node, input_=input_node, dt=1)
+            stable, _ = check_stability(mutant, output_node, input_=input_node, max_dt=1)
             if connected is True and stable is True:
                 population.append(mutant)
         print('Generation ', gen, 'required', attempt, 'divisions to repopulate')
