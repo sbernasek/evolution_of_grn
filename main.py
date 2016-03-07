@@ -8,11 +8,9 @@ from modules.fitness import *
 
 """
 TO DO:
-    0. Right now we are producing tons of shitty networks that don't respond stably... we need to fix this.
+    0. Right now we are producing tons of shitty networks that don't respond stably, which is really inefficient
     1. write robustness test
     2. add any arbitrary input... maybe a reaction with disturbance as input that can't be removed
-    3. add input/output to graph
-    4. minor point... could encourage more mutations for the initial population to encourage diverse starting points
 """
 
 
@@ -83,7 +81,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
     output_node = 1
 
     # simulation parameters
-    cell_type = 'prokaryote' # defines simulation type
+    cell_type = 'prokaryote'  # defines simulation type
 
     # initialize cell population as a single cell with 3 genes, 2 of which are permanent (corresponds to get_fitness_2)
     population = [Cell(name=1, removable_genes=0, permanent_genes=2, cell_type=cell_type)]
@@ -101,6 +99,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
             mutations_used = mutations_per_division
 
         # grow remaining cells back to desired population size
+        cells_required = population_size - len(population)
         attempt = 0
         while len(population) < population_size:
             attempt += 1
@@ -109,11 +108,16 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
             _, mutant = cell.divide(num_mutations=mutations_used)
 
             # only accept cells in which the output is dependent upon the input, and a stable steady state is achieved
-            connected = interaction_check_topographical(mutant, input_=input_node, output=output_node)
-            stable, _ = check_stability(mutant, output_node, input_=input_node, max_dt=1)
-            if connected is True and stable is True:
-                population.append(mutant)
-        print('Generation ', gen, 'required', attempt, 'divisions to repopulate')
+            stable, dt = check_stability(mutant, output_node, input_=input_node, max_dt=1)
+
+            if stable is True:
+                steady_states, _ = get_steady_states(mutant, output=output_node, input_=input_node, input_magnitude=1)
+                connected = interaction_check_numerical(mutant, input_=input_node, output=output_node, steady_states=steady_states, dt=dt)
+
+                if connected is True:
+                    population.append(mutant)
+            
+        print('Generation ', gen, 'required', attempt, 'divisions to produce ', cells_required, 'acceptable cells')
 
         # run dynamics and score each cell
         scores = evaluate(get_fitness_2, population, input_node, output_node)
@@ -228,8 +232,10 @@ def plot_2D_trajectory(score_evolution, obj=None):
         max_x, max_y = max(x + (max_x,)), max(y + (max_y,))
 
     # format plot
-    ax.set_xlim(0, 1.2*max_x)
-    ax.set_ylim(0, 1.2*max_y)
+    # ax.set_xlim(0, 1.2*max_x)
+    # ax.set_ylim(0, 1.2*max_y)
+    ax2.set_xscale('log')
+    ax2.set_yscale('log')
     ax.set_xlabel('Objective %d' % obj[0], fontsize=16)
     ax.set_ylabel('Objective %d' % obj[1], fontsize=16)
     ax.set_title('Evolutionary Trajectory', fontsize=16)

@@ -106,7 +106,7 @@ class Cell:
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
         # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.3, 0.6, 0.1])
+        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.2, 0.6, 0.2])
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -857,16 +857,20 @@ class Cell:
 
         return edge_list, node_labels, node_key
 
-    def show_topology(self, graph_layout='shell'):
+    def show_topology(self, graph_layout='shell', input_node=None, output_node=None, retall=False):
         """
         Generates networkx visualization of network topology.
 
         Parameters:
             graph_layout (string) - method used to arrange network nodes in space
+            input_node (int) -
+            output_node (int) -
+            retall (bool) -
         """
 
         # get network topology
         edge_list, node_labels, node_key = self.get_topology()
+        node_key[None] = None
 
         if len(edge_list) == 0:
             print('Network has no edges.')
@@ -883,6 +887,10 @@ class Cell:
         plt.figure()
         g = nx.DiGraph()
 
+        # add nodes
+        for node, node_type in node_labels.items():
+            g.add_node(node, attr_dict={'node_type': node_type})
+
         # add edges
         for edge in edge_list:
             g.add_edge(edge[0], edge[1])
@@ -896,11 +904,6 @@ class Cell:
             pos = nx.random_layout(g)
         else:
             pos = nx.shell_layout(g)
-
-        # TEMP - this is a little pointless but will keep it for now
-        # retain only nodes that appear within the regulatory network (i.e. have connections)
-        node_labels = {node: node_type for node, node_type in node_labels.items()
-                       if node in ([edge[0] for edge in edge_list] + [edge[1] for edge in edge_list])}
 
         # sort nodes into four types (different colors on graph)
         permanent_genes = [node for node, node_type in node_labels.items() if node_type == 'permanent gene']
@@ -943,34 +946,35 @@ class Cell:
 
         # draw node labels with gene numbers
         for node, node_type in node_labels.items():
-            node_labels[node] = node_type + '\n' + str(node)
+
+            if node == node_key[input_node] and input_node is not None:
+                node_labels[node] = 'INPUT' + '\n' + str(node)
+            elif node == node_key[output_node] and output_node is not None:
+                node_labels[node] = 'OUTPUT' + '\n' + str(node)
+            else:
+                node_labels[node] = node_type + '\n' + str(node)
+
         nx.draw_networkx_labels(g, pos, labels=node_labels, font_size=node_text_size, fontweight='bold', color='k', ha='center')
 
+        # get current figure and axes
         fig = plt.gcf()
         fig.set_size_inches(15, 15)
         _ = plt.axis('off')
+        ax = plt.gca()
 
-    def check_if_downstream(self, p1, p2):
-        """
-        Determines whether first modified protein is downstream of the second.
+        # add all catalytic interactions
+        for rxn in self.reactions:
+            if rxn.rxn_type == 'catalytic_modification':
 
-        Parameters:
-            p1 (int) - index of first modified protein
-            p2 (int) - index of second modified protein
+                x_substrate, y_substrate = pos[node_key[rxn.reactants[0]]]
+                x_enzyme, y_enzyme = pos[node_key[rxn.reactants[1]]]
+                x_product, y_product = pos[node_key[rxn.products[0]]]
 
-        """
+                x = x_enzyme
+                y = y_enzyme
+                U = (x_product - x_substrate)/2 + x_substrate - x_enzyme
+                V = (y_product - y_substrate)/2 + y_substrate - y_enzyme
+                ax.arrow(x, y, U, V, length_includes_head=True, head_length=0.05, head_width=0.025, fc='g', ec='g', linewidth=3)
 
-        # if first protein has a lower index, it cannot be downstream of second protein
-        if p1 < p2:
-            return False
-
-        # get substrate upstream of p1 and check whether it originated before p2. if not, continue upstream until
-        # all modifications reactions have been exhaustively checked or an upstream substrate has been found.
-        precursor_list = [rxn.reactants[0] for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification'] and rxn.products == p1]
-        while len(precursor_list) > 0:
-            if min(precursor_list) < p2:
-                return False
-            else:
-                precursor_list = [rxn.reactants[0] for rxn in self.reactions if rxn.rxn_type in ['modification', 'catalytic_modification'] and rxn.products == min(precursor_list)]
-        return True
-
+        if retall is True:
+            return ax

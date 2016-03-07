@@ -37,24 +37,24 @@ def check_stability(cell, output, input_=None, max_dt=1, min_dt=0.1):
 
         if input_ is None:
             # if no input node is specified, get steady state values in the absence of any driving signal
-            input_signal = Signal(name='get_ss', duration=20, dt=dt, signal=None)
+            input_signal = Signal(name='get_ss', duration=200, dt=dt, signal=None)
             states, _, key = cell.simulate(input_signal, mode='langevin', retall=True)
 
         else:
             # if input node is specified, get steady state values following unit step input to unit node
-            input_signal = Signal(name='get_ss', duration=20, dt=dt, channels=1)
+            input_signal = Signal(name='get_ss', duration=200, dt=dt, channels=1)
             input_signal.step(1)
             states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
         # if states are numerically stable, accept them. if not, reduce timestep
         positive, finite, nonzero, real = False, False, False, False
-        if sum([level < 0 for level in states[key[output], :]]) == 0:
+        if np.min(states) >= 0:
             positive = True
 
-        if max([abs(level) for level in states[key[output], :]]) < 1e10:
+        if np.max(states) < 1e6:
             finite = True
 
-        if sum(states[key[output], :]) > 1e-100:
+        if np.max(states) > 1e-3:
             nonzero = True
 
         if sum(np.isnan(states[key[output], :])) == 0:
@@ -67,14 +67,15 @@ def check_stability(cell, output, input_=None, max_dt=1, min_dt=0.1):
             dt /= 10
 
 
-def get_steady_states(cell, output=None, input_=None, dt=0.1, plot=False):
+def get_steady_states(cell, output=None, input_=None, input_magnitude=1, dt=0.1, plot=False):
     """
     Returns steady state level of specified node given zero initial conditions and no disturbance signal.
 
     Parameters:
         cell (cell object) - gene regulatory network of interest
         output (int) - index of output node, if not None, output steady state is returned
-        input (int) - index of input node, if not None, unit step signal is sent to input
+        input_ (int) - index of input node, if not None, unit step signal is sent to input
+        input_magnitude (float) - magnitude of input signal
         dt (float) - time step used
         plot (bool) - if True, plot prcedure
 
@@ -91,7 +92,7 @@ def get_steady_states(cell, output=None, input_=None, dt=0.1, plot=False):
     else:
         # if input node is specified, get steady state values following unit step input to unit node
         input_signal = Signal(name='get_ss', duration=200, dt=dt, channels=1)
-        input_signal.step(1)
+        input_signal.step(input_magnitude)
         states, _, key = cell.simulate(input_signal, input_node=input_, mode='langevin', retall=True)
 
     # get steady states
@@ -130,14 +131,17 @@ def get_steady_states(cell, output=None, input_=None, dt=0.1, plot=False):
         return steady_states, output_ss
 
 
-def interaction_check_topographical(cell, input_, output):
+def interaction_check(cell, input_, output):
     """
-        Determines whether input influences output.
+    Determines whether input influences output.
 
-        Parameters:
-            input_ (int) - input node index
-            output (int) - output node index
-        """
+    Note: at the moment this incorrectly identifies catalytic reverse-modifications as upregulating, when they aren't
+
+    Parameters:
+        cell (cell object) - network of interest
+        input_ (int) - input node index
+        output (int) - output node index
+    """
 
     # if output is a coded protein, constitutive expression of its corresponding gene will enable downregulating edges
     # to influence output level
@@ -154,7 +158,6 @@ def interaction_check_topographical(cell, input_, output):
 
     # identify all upregulated downstream nodes, if output gene is amongst them then output is positively upregulated
     for dependent in upregulated_dependents:
-
         # downstream of output or its corresponding gene is irrelevant
         if dependent == gene or dependent == output:
             return True
@@ -206,52 +209,50 @@ def interaction_check_topographical(cell, input_, output):
         return False
 
 
-def interaction_check_numerical(cell, input_, output, plot=False, dt=0.1):
+def interaction_check_numerical(cell, input_, output, steady_states=None, dt=0.1, plot=False):
     """
-    Determines whether a specified output node is affected by a particular input node.
+    Determines whether input influences output by checking whether output deviates from steady state upon step change
+    to input.
 
     Parameters:
-        cell (cell object) - gene regulatory network of interest
-        input_ (int) - index of input node
-        output (int) - index of output node
-        plot (bool) - if true, plot output response
+        cell (cell object) - network of interest
+        input_ (int) - input node index
+        output (int) - output node index
+        steady_states (np array) - array of steady state values, if not None, these are used as initial conditions
         dt (float) - time step
+        plot (bool) - if True, plot procedure
 
     Returns:
-        (bool) - true if cells are connected, false if not
+        connected (bool) - if True, output depends upon input
     """
 
-    # procedure computes steady state level for an input level of 1, then computes the cumulative output deviation for a
-    # 10 minute interval with input level of 5. If the cumulative deviation exceeds 1e-10, nodes are connected.
+    # if no steady states were provided, get them
+    if steady_states is None:
+        steady_states, _ = get_steady_states(cell, input_=input_, output=output, dt=dt)
 
-    # create elevated input signal
-    elevated = Signal(name='elevated', duration=10, dt=dt, signal=None, channels=1)
-    elevated.step(magnitude=5)
+    # apply new step change to input and simulate response
+    step_input = Signal(name='input', duration=10, dt=dt, channels=1)
+    step_input.step(2)
+    states, _, key = cell.simulate(step_input, input_node=input_, ic=steady_states, mode='langevin', retall=True)
 
-    # get steady states
-    steady_states, output_ss = get_steady_states(cell, output=output, dt=dt)
+    # get peak output deviation from initial steady state value
+    output_states = states[key[output], :]
+    output_ss = steady_states[key[output]]
+    max_deviation = max([abs(op - output_ss) for op in output_states]) / output_ss
 
-    # run simulation
-    states, _, key = cell.simulate(elevated, input_node=input_, ic=steady_states, mode='langevin', retall=True)
-
-    # if simulation blows up, return None
-    if None in [state for state in states[:, -1]]:
-        return None
-
-    # check if output differs
-    output_response = states[key[output], :]
-    cumulative_output_deviation = sum(abs(output_response-output_ss)*dt)
-
+    # plot input and output trajectories (optional)
     if plot is True:
-        ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-        ax.plot(elevated.time, states[key[output], :], '-b', label='Response to 5x Step')
-        ax.set_ylim(0, 2*max(states[key[output], :]))
-        ax.legend(loc=0)
-        ax.set_xlabel('Time (min)', fontsize=16)
-        ax.set_ylabel('Output', fontsize=16)
-        ax.set_title('Input/Output Connection Test', fontsize=16)
 
-    if cumulative_output_deviation > 1:
+        ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
+        ax.plot(step_input.time, output_states, '-r', linewidth=5, label='Output')
+        ax.legend(loc=0)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 1.5*max(output_states))
+        ax.set_xlabel('Time (min)', fontsize=16)
+        ax.set_ylabel('Output Level', fontsize=16)
+        ax.set_title('Interaction Test', fontsize=16)
+
+    if max_deviation > 0.02:
         return True
     else:
         return False
@@ -362,11 +363,11 @@ def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=N
     if output_node is None:
         output_node = 1
 
-    # check to see whether input/output are connected, if not then skip this cell (not necessary, but saves time)
-    # similarly, if connected is None (simulation blows up), skip this cell
-    connected = interaction_check_topographical(cell, input_=input_node, output=output_node)
-    if connected is False or connected is None:
-        return None, None
+    # # check to see whether input/output are connected, if not then skip this cell (not necessary, but saves time)
+    # # similarly, if connected is None (simulation blows up), skip this cell
+    # connected = interaction_check(cell, input_=input_node, output=output_node)
+    # if connected is False or connected is None:
+    #     return None, None
 
     # check stability and get time step
     stable, dt = check_stability(cell, output_node, input_=input_node)
@@ -374,8 +375,13 @@ def get_fitness_2(cell, input_node=None, output_node=None, mode='langevin', dt=N
         return None, None
 
     # get steady state levels, if no stable steady states are found then return None and move on
-    steady_states, output_ss = get_steady_states(cell, output=output_node, input_=input_node)
+    steady_states, output_ss = get_steady_states(cell, output=output_node, input_=input_node, input_magnitude=1)
     if steady_states is None:
+        return None, None
+
+    # check to see whether input/output are connected, if not then skip this cell
+    connected = interaction_check_numerical(cell, input_=input_node, output=output_node, steady_states=steady_states, dt=dt)
+    if connected is False or connected is None:
         return None, None
 
     # create sequence of plateaus for disturbance signal
