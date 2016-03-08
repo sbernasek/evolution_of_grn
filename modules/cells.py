@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 import copy
+import scipy.integrate
 from modules.reactions import *
 from modules.parameters import *
 
@@ -978,3 +979,104 @@ class Cell:
 
         if retall is True:
             return ax
+
+    def simulate_2(self, disturbances, input_node=0, ic=None, mode='tau_leaping', retall=False):
+        """
+        Simulates dynamic system using Scipy's ode object.
+
+        Parameters:
+            disturbances (signal object) - signal describing external perturbation of system states
+            input_node (int) - index of mRNA whose transcription rate is impacted by disturbance
+            ic (np array) - vector of initial conditions for each species, assumed zero if omitted
+            mode (str) - indicates whether 'tau_leaping' or 'langevin' method is used to solve system ODEs
+            retall (bool) - if true, return the energy usage and reindexing key
+
+        Returns:
+            states (np array) - N by t matrix of controlled variable states at each time point
+            energy_usage (float) - total energy used
+            reindexing_key (dict) - dictionary in which keys are old indices and values are the new sequential indices
+        """
+
+        # compile dictionary for reindexing nodes
+        reindexing_key = self.reindex_nodes()
+
+        # compile stoichiometric matrix and heat of reaction vector
+        self.compile_stoichiometry(reindexing_key)
+        atp_per_rxn = [rxn.atp_usage for rxn in self.reactions]
+
+        # initialize solution list and reaction rates list
+        solution = []
+        self.rxn_rates = []
+
+        # if no initial condition is provided, assume all states are initially zero
+        initial_states = ic
+        if ic is None:
+            initial_states = np.zeros(self.network_dimension)
+
+        # initialize ODE solver
+        integration_length = disturbances[-1][0]
+        solver = scipy.integrate.ode(self.get_species_rates).set_integrator('dopri5', method='bdf')
+        solout = lambda t, y: solution.append([t] + [y_i for y_i in y])
+        solver.set_solout(solout)
+
+        # solve ODE and return solution
+        solver.set_initial_value(initial_states, 0).set_f_params(self.stoichiometry, reindexing_key, disturbances, input_node)
+        solver.integrate(integration_length)
+        solution = np.array(solution)
+
+        # get solution
+        times = solution[:, 0]
+        states = solution[:, 1:]
+
+        # update energy usage
+        energy_usage = self.get_energy_usage(atp_per_rxn)
+
+        if retall is True:
+            return times, states, energy_usage, reindexing_key
+        else:
+            return times, states
+
+    def get_species_rates(self, t, states, stoichiometry, key, disturbances, input_node):
+
+        # compute current reactions rates
+        rxn_rates = self.get_reaction_rates(states, key)
+
+        # determine current disturbance value
+        if disturbances is not None:
+            for time, magnitude in disturbances:
+                if t >= time:
+                    current_disturbance = magnitude
+                else:
+                    break
+
+        # apply disturbance as activation of target gene
+        disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
+                         if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
+        rxn_rates[disturbed_rxn[0]] = current_disturbance
+
+        # compute species rates
+        self.rxn_rates.append((t, rxn_rates))
+        species_rates = np.dot(stoichiometry, rxn_rates)
+
+        return species_rates
+
+    def get_reaction_rates(self, states, key):
+        rxn_rates = self.get_rate_vector(states, key)
+        return rxn_rates
+
+    def get_energy_usage(self, atp_per_rxn):
+
+        # get instantaneous rates of each reaction
+        for i, item in enumerate(zip(*self.rxn_rates)):
+            if i == 0:
+                rate_times = item
+            else:
+                rate_vectors = [rate_vector for rate_vector in zip(*item)]
+
+        # compute reaction extents
+        rxn_extents = scipy.integrate.trapz(rate_vectors, x=rate_times)
+
+        # compute total atp usage
+        energy_usage = np.dot(rxn_extents, atp_per_rxn)
+
+        return energy_usage

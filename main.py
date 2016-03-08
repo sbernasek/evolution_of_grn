@@ -11,6 +11,7 @@ TO DO:
     0. Right now we are producing tons of shitty networks that don't respond stably, which is really inefficient
     1. write robustness test
     2. add any arbitrary input... maybe a reaction with disturbance as input that can't be removed
+    3. constrain test steps to be different from initial input
 """
 
 
