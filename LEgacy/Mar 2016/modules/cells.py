@@ -5,17 +5,13 @@ import numpy as np
 import networkx as nx
 import copy
 import scipy.integrate
-import scipy.optimize
-import warnings
 from modules.reactions import *
 from modules.parameters import *
-from modules.plotting import *
-
-warnings.filterwarnings('error')
 
 """
 TO DO:
     1. add new types of input (i.e. direct protein level)
+    2. add edge modifiers to show topography
 
 Long term:
     1. dimerization + reverse
@@ -39,7 +35,6 @@ class Cell:
         # assign cell index as name and get mutation probabilities
         self.name = name
         self.cell_type = cell_type
-        self.key = None
 
         # initialize cell species
         self.species_count = 0  # this is the total number of unique chemical species in this cell's genetic lineage
@@ -634,15 +629,13 @@ class Cell:
         # remove products and all dependent proteins
         self.delete_dependencies(reaction_products, genes_removable=False)
 
-    def compile_stoichiometry(self):
+    def compile_stoichiometry(self, key):
         """
         Iterates through list of M reactions involving N species and constructs NxM stoichiometry matrix.
 
+        Parameters:
+            key (dict) - dictionary in which keys are the legacy indices and values are sequential indices
         """
-
-        # reindex nodes to sequential order
-        self.reindex_nodes()
-
         # initialize stoichiometric matrix as zeros
         self.stoichiometry = np.zeros((self.network_dimension, len(self.reactions)))
 
@@ -650,22 +643,22 @@ class Cell:
         for rxn_num, rxn in enumerate(self.reactions):
             # consumed reactants receive negative coefficient
             for reactant in rxn.consumed:
-                self.stoichiometry[self.key[reactant], rxn_num] = -1
+                self.stoichiometry[key[reactant], rxn_num] = -1
 
             # products receive positive coefficient
             for product in rxn.products:
-                self.stoichiometry[self.key[product], rxn_num] = 1
+                self.stoichiometry[key[product], rxn_num] = 1
 
-    def get_rate_vector(self, concentrations):
+    def get_rate_vector(self, concentrations, key):
         """
         Computes rate of each reaction.
 
         Parameters:
             concentrations (np array) - Nx1 vector of current species concentrations
+            key (dict) - dictionary in which keys are the legacy indices and values are sequential indices
         Returns:
             rxn_rates (list) - list of M current reaction rates
         """
-
         rxn_rates = []
         for rxn in self.reactions:
 
@@ -684,7 +677,7 @@ class Cell:
                         if mod.target == rxn.products[0]:
 
                             # get transcription factor index
-                            tf = self.key[mod.substrate]
+                            tf = key[mod.substrate]
 
                             # compute total transcription rate as max(activation_strengths)*product(repression_strengths)
                             tf_impact = mod.get_rate_modifier(concentrations[tf])
@@ -699,7 +692,7 @@ class Cell:
 
             else:
                 # compute rates for other reaction types
-                reactants = np.array([self.key[reactant] for reactant in rxn.reactants])
+                reactants = np.array([key[reactant] for reactant in rxn.reactants])
                 rate = rxn.get_rate(concentrations[reactants])
 
             # add reaction rate to rxn rate vector
@@ -709,14 +702,95 @@ class Cell:
 
     def reindex_nodes(self):
         """
-        Compile dictionary for reindexing all nodes into sequential order (genes, proteins, modified proteins) used in
-        states array.
+        Compile dictionary for reindexing all surviving nodes into sequential order.
 
+        Returns:
+            reindexing_key (dict) - dictionary in which keys are old indices and values are the new sequential indices
         """
         active_species = self.coding_rnas + self.non_coding_rnas + self.proteins
         self.network_dimension = len(active_species)
         reindexing_key = {old_index: new_index for new_index, old_index in enumerate(active_species)}
-        self.key = reindexing_key
+        return reindexing_key
+
+    def simulate(self, disturbances, input_node=0, ic=None, mode='tau_leaping', retall=False):
+        """
+        Simulates dynamic system.
+
+        Parameters:
+            disturbances (signal object) - signal describing external perturbation of system states
+            input_node (int) - index of mRNA whose transcription rate is impacted by disturbance
+            ic (np array) - vector of initial conditions for each species, assumed zero if omitted
+            mode (str) - indicates whether 'tau_leaping' or 'langevin' method is used to solve system ODEs
+            retall (bool) - if true, return the energy usage and reindexing key
+
+        Returns:
+            states (np array) - N by t matrix of controlled variable states at each time point
+            energy_usage (float) - total energy used
+            reindexing_key (dict) - dictionary in which keys are old indices and values are the new sequential indices
+        """
+
+        # compile dictionary for reindexing nodes
+        reindexing_key = self.reindex_nodes()
+
+        # compile stoichiometric matrix and heat of reaction vector
+        self.compile_stoichiometry(reindexing_key)
+        atp_usage_vector = [rxn.atp_usage for rxn in self.reactions]
+
+        # initialize states array and total energy usage
+        states = np.empty((self.network_dimension, len(disturbances.time)))
+        energy_usage = 0
+
+        # if no initial condition is provided, assume all states are initially zero
+        states[:, 0] = ic
+        if ic is None:
+            states[:, 0] = np.zeros(self.network_dimension)
+
+        # begin dynamic simulation
+        dt = disturbances.dt
+        for i, t in enumerate(disturbances.time[:-1]):
+
+            # if any of the states blow up, abort procedure
+            if np.max(states[:, i] > 1e10):
+                states[:, i+1] = None
+                break
+
+            # determine reaction rates
+            rxn_rates = self.get_rate_vector(states[:, i], reindexing_key)
+
+            # apply disturbances as rate-multiplier of target gene's transcription
+            if disturbances.signal is not None:
+                disturbance_impact = disturbances.signal[0][i]
+                disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
+                                 if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
+                rxn_rates[disturbed_rxn[0]] = disturbance_impact
+
+            # determine reaction extents
+            if mode == 'tau_leaping':
+                rxn_extents = [np.random.poisson(rate*dt) for rate in rxn_rates]
+            elif mode == 'langevin':
+                rxn_extents = [rate*dt for rate in rxn_rates]
+            else:
+                print('Error: Solution method not recognized')
+                break
+
+            # determine species extents
+            species_extents = np.dot(self.stoichiometry, rxn_extents)
+
+            # if concentration is going to be negative, adjust extent such that level drops to zero
+            for species, extent in enumerate(species_extents):
+                if extent < 0 and abs(extent) > states[species, i]:
+                    species_extents[species] = states[species, i]
+
+            # update energy usage
+            energy_usage += np.dot(rxn_extents, atp_usage_vector)
+
+            # update species concentrations
+            states[:, i+1] = states[:, i] + species_extents
+
+        if retall is True:
+            return states, energy_usage, reindexing_key
+        else:
+            return states
 
     def get_topology(self):
         """
@@ -906,7 +980,7 @@ class Cell:
         if retall is True:
             return ax
 
-    def simulate(self, disturbances, input_node=0, ic=None, retall=False):
+    def simulate_2(self, disturbances, input_node=0, ic=None, mode='tau_leaping', retall=False):
         """
         Simulates dynamic system using Scipy's ode object.
 
@@ -918,17 +992,21 @@ class Cell:
             retall (bool) - if true, return the energy usage and reindexing key
 
         Returns:
-            times (np array) - time points corresponding to state values (1 by t)
-            states (np array) - matrix of state values at each time point (N by t)
+            states (np array) - N by t matrix of controlled variable states at each time point
             energy_usage (float) - total energy used
+            reindexing_key (dict) - dictionary in which keys are old indices and values are the new sequential indices
         """
 
-        # compile reindexing key, stoichiometric matrix, and atp requirements
-        self.compile_stoichiometry()
+        # compile dictionary for reindexing nodes
+        reindexing_key = self.reindex_nodes()
+
+        # compile stoichiometric matrix and heat of reaction vector
+        self.compile_stoichiometry(reindexing_key)
         atp_per_rxn = [rxn.atp_usage for rxn in self.reactions]
 
-        # initialize solution list
+        # initialize solution list and reaction rates list
         solution = []
+        self.rxn_rates = []
 
         # if no initial condition is provided, assume all states are initially zero
         initial_states = ic
@@ -937,72 +1015,31 @@ class Cell:
 
         # initialize ODE solver
         integration_length = disturbances[-1][0]
+        solver = scipy.integrate.ode(self.get_species_rates).set_integrator('dopri5', method='bdf')
+        solout = lambda t, y: solution.append([t] + [y_i for y_i in y])
+        solver.set_solout(solout)
 
-        # first try dopri5 for non-stiff systems:
-        try:
-            solver = scipy.integrate.ode(self.get_species_rates).set_integrator('dopri5', method='bdf', nsteps=1000)
-            solout = lambda t, y: solution.append([t] + [y_i for y_i in y])
-            solver.set_solout(solout)
-            solver.set_initial_value(initial_states, 0).set_f_params(disturbances, input_node)
-            solver.integrate(integration_length)
-
-        # if dopri5 fails, use vode (slow, but more likely to work)
-        except UserWarning:
-            print('switched to vode solver')
-            solver = scipy.integrate.ode(self.get_species_rates).set_integrator('vode', method='bdf')
-            solver.set_initial_value(initial_states, 0).set_f_params(disturbances, input_node)
-            while solver.successful() and solver.t < integration_length:
-                solver.integrate(integration_length, step=True)
-                solution.append([solver.t] + [y_i for y_i in solver.y])
+        # solve ODE and return solution
+        solver.set_initial_value(initial_states, 0).set_f_params(self.stoichiometry, reindexing_key, disturbances, input_node)
+        solver.integrate(integration_length)
+        solution = np.array(solution)
 
         # get solution
-        solution = np.array(solution)
-        times = solution[:, 0].T
-        states = solution[:, 1:].T
+        times = solution[:, 0]
+        states = solution[:, 1:]
 
         # update energy usage
-        energy_usage = self.get_energy_usage(times, states, disturbances, input_node, atp_per_rxn)
+        energy_usage = self.get_energy_usage(atp_per_rxn)
 
         if retall is True:
-            return times, states, energy_usage
+            return times, states, energy_usage, reindexing_key
         else:
             return times, states
 
-    def get_species_rates(self, t, state, disturbances=None, input_node=None):
-        """
-        Computes net rate of change of each chemical species. This serves as the "derivative" function for the ODE solver.
-
-        Parameters:
-            t (float) - current time
-            state (list) - list of current state values
-            disturbances (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of gene to which activation signal is sent
-
-        Returns:
-            species_rates (np array) - net rate of change of each species (N x 1)
-        """
-
-        rxn_rates = self.get_rxn_rates(t, state, disturbances, input_node)
-        species_rates = np.dot(self.stoichiometry, rxn_rates)
-
-        return species_rates
-
-    def get_rxn_rates(self, t, state, disturbances, input_node):
-        """
-        Computes rate of each reaction. This serves as the basis for the energy usage calculations.
-
-        Parameters:
-            t (float) - current time
-            state (list) - list of current state values
-            disturbances (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of gene to which activation signal is sent
-
-        Returns:
-            rxn_rates (np array) - rate of each reaction (M x 1)
-        """
+    def get_species_rates(self, t, states, stoichiometry, key, disturbances, input_node):
 
         # compute current reactions rates
-        rxn_rates = self.get_rate_vector(state)
+        rxn_rates = self.get_reaction_rates(states, key)
 
         # determine current disturbance value
         if disturbances is not None:
@@ -1012,146 +1049,34 @@ class Cell:
                 else:
                     break
 
-            # apply disturbance as activation of target gene
-            disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
-                             if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
-            rxn_rates[disturbed_rxn[0]] = current_disturbance
+        # apply disturbance as activation of target gene
+        disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
+                         if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
+        rxn_rates[disturbed_rxn[0]] = current_disturbance
 
+        # compute species rates
+        self.rxn_rates.append((t, rxn_rates))
+        species_rates = np.dot(stoichiometry, rxn_rates)
+
+        return species_rates
+
+    def get_reaction_rates(self, states, key):
+        rxn_rates = self.get_rate_vector(states, key)
         return rxn_rates
 
-    def get_energy_usage(self, times, states, disturbances, input_node, atp_per_rxn):
-        """
-        Computes total atp usage for the current simulation.
+    def get_energy_usage(self, atp_per_rxn):
 
-        Parameters:
-            times (np array) - time points corresponding to state values (1 by t)
-            states (np array) - matrix of state values at each time point (N by t)
-            disturbances (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of gene to which activation signal is sent
-            atp_per_rxn (list) - list of atp requirements per unit flux through each reaction pathway (M x 1)
-
-        Returns:
-            energy_usage (float) - total number of ATPs required
-        """
-
-        # compute reaction rates
-        rxn_rates = np.empty((len(self.reactions), len(times)))
-        for i, t in enumerate(times):
-            rxn_rates[:, i] = self.get_rxn_rates(t, states[:, i], disturbances, input_node)
+        # get instantaneous rates of each reaction
+        for i, item in enumerate(zip(*self.rxn_rates)):
+            if i == 0:
+                rate_times = item
+            else:
+                rate_vectors = [rate_vector for rate_vector in zip(*item)]
 
         # compute reaction extents
-        rxn_extents = scipy.integrate.trapz(rxn_rates, x=times)
+        rxn_extents = scipy.integrate.trapz(rate_vectors, x=rate_times)
 
         # compute total atp usage
         energy_usage = np.dot(rxn_extents, atp_per_rxn)
 
         return energy_usage
-
-    def get_steady_states(self, input_node=None, input_magnitude=1, ic=None):
-        """
-        Computes steady state of system from specified initial condition.
-
-        Parameters:
-            input_node (int) - index of input node, if None then zero input assumed
-            input_magnitude (float) - magnitude of input signal, if None then zero input assumed
-            ic (np array) - initial conditions from which steady state is found
-
-        """
-
-        # compile stoichiometric matrix
-        self.compile_stoichiometry()
-
-        # if no initial condition is provided, assume all states are initially zero
-        initial_states = ic
-        if ic is None:
-            initial_states = np.zeros(self.network_dimension)
-
-        # use fsolve to find roots of ODE system:
-        while True:
-            if initial_states[0] > 500:
-                return None
-            try:
-                steady_states = scipy.optimize.fsolve(self.get_ss_species_rates, initial_states, args=(input_node, input_magnitude))
-                break
-            except RuntimeWarning:
-                initial_states += 50
-
-        return steady_states
-
-    def get_ss_species_rates(self, states, input_node, input_magnitude):
-        """
-        Computes net rate of change of each chemical species. This serves as the "derivative" function for the steady
-         state solver.
-
-        Parameters:
-            states (list) - list of current state values
-            input_node (int) - index of node to which disturbance signal is sent
-            input_signal (float) - magnitude of input signal
-
-        Returns:
-            species_rates (np array) - net rate of change of each species (N x 1)
-        """
-
-        # compute current reactions rates
-        rxn_rates = self.get_rate_vector(states)
-
-        # apply disturbance as activation of target gene
-        if input_node is not None and input_magnitude is not None:
-            disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
-                             if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
-            rxn_rates[disturbed_rxn[0]] = input_magnitude
-
-        # compute species rates
-        species_rates = np.dot(self.stoichiometry, rxn_rates)
-
-        return species_rates
-
-    def interaction_check_numerical(self, input_node, output_node, steady_states=None, plot=False):
-        """
-        Determines whether input influences output by checking whether output deviates from steady state upon step
-        change to input.
-
-        Parameters:
-            input_node (int) - input node index
-            output_node (int) - output node index
-            steady_states (np array) - array of steady state values, if not None, these are used as initial conditions
-            plot (bool) - if True, plot procedure
-
-        Returns:
-            connected (bool) - if True, output depends upon input
-        """
-
-        # if no steady states were provided, get them
-        if steady_states is None:
-            steady_states = self.get_steady_states(input_node=input_node, input_magnitude=1, ic=None)
-
-        if steady_states is None:
-            return None
-
-        # get baseline output level
-        output_ss_baseline = steady_states[self.key[output_node]]
-
-        # apply new step change to input and simulate response
-        step_input = [(0, 2), (10, 2)]
-        times, states, _ = self.simulate(step_input, input_node=input_node, ic=steady_states, retall=True)
-
-        # get peak output deviation from initial steady state value
-        output_states = states[self.key[output_node], :]
-        max_deviation = max([abs(op - output_ss_baseline) for op in output_states]) / output_ss_baseline
-
-        # plot input and output trajectories (optional)
-        if plot is True:
-
-            ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-            ax.plot(times, output_states, '-r', linewidth=5, label='Output')
-            ax.legend(loc=0)
-            ax.set_xlim(0, 10)
-            ax.set_ylim(0, 1.5*max(output_states))
-            ax.set_xlabel('Time (min)', fontsize=16)
-            ax.set_ylabel('Output Level', fontsize=16)
-            ax.set_title('Interaction Test', fontsize=16)
-
-        if max_deviation > 0.02:
-            return True
-        else:
-            return False

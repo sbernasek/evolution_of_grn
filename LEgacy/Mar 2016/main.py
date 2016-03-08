@@ -31,7 +31,7 @@ def evaluate(f, cells, input_node=None, output_node=None):
 
     scores = []
     for cell in cells:
-        score = f(cell, input_node=input_node, output_node=output_node)
+        score = f(cell, mode='langevin', dt=None,  input_node=input_node, output_node=output_node)
         scores.append(score)
     return scores
 
@@ -109,16 +109,19 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
             _, mutant = cell.divide(num_mutations=mutations_used)
 
             # only accept cells in which the output is dependent upon the input, and a stable steady state is achieved
-            steady_states = mutant.get_steady_states(input_node=input_node, input_magnitude=1)
-            connected = mutant.interaction_check_numerical(input_node=input_node, output_node=output_node, steady_states=steady_states)
-            if connected is True and steady_states is not None:
-                population.append(mutant)
+            stable, dt = check_stability(mutant, output_node, input_=input_node, max_dt=1)
 
-        # display current generation's growth efficiency
+            if stable is True:
+                steady_states, _ = get_steady_states(mutant, output=output_node, input_=input_node, input_magnitude=1)
+                connected = interaction_check_numerical(mutant, input_=input_node, output=output_node, steady_states=steady_states, dt=dt)
+
+                if connected is True:
+                    population.append(mutant)
+            
         print('Generation ', gen, 'required', attempt, 'divisions to produce ', cells_required, 'acceptable cells')
 
         # run dynamics and score each cell
-        scores = evaluate(get_fitness, population, input_node, output_node)
+        scores = evaluate(get_fitness_2, population, input_node, output_node)
 
         # filter any scores with None, inf, nan, or values >1e10
         scores_considered = filter_scores(scores, tol=1e15)
@@ -232,8 +235,8 @@ def plot_2D_trajectory(score_evolution, obj=None):
     # format plot
     # ax.set_xlim(0, 1.2*max_x)
     # ax.set_ylim(0, 1.2*max_y)
-    ax.set_xscale('log')
-    ax.set_yscale('log')
+    ax2.set_xscale('log')
+    ax2.set_yscale('log')
     ax.set_xlabel('Objective %d' % obj[0], fontsize=16)
     ax.set_ylabel('Objective %d' % obj[1], fontsize=16)
     ax.set_title('Evolutionary Trajectory', fontsize=16)
