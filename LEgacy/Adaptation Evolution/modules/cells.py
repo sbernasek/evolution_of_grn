@@ -1159,8 +1159,9 @@ class Cell:
         # if no steady states were provided, get them
         if steady_states is None:
             steady_states = self.get_steady_states(input_node=input_node, input_magnitude=1, ic=None)
-            if steady_states is None:
-                return None
+
+        if steady_states is None:
+            return None
 
         # get baseline output level
         output_ss_baseline = steady_states[self.key[output_node]]
@@ -1170,8 +1171,8 @@ class Cell:
             return False
 
         # apply new step change to input and simulate response
-        input_signal = [(0, 2), (10, 2)]
-        times, states, _ = self.simulate(input_signal, input_node=input_node, ic=steady_states)
+        step_input = [(0, 2), (10, 2)]
+        times, states, _ = self.simulate(step_input, input_node=input_node, ic=steady_states)
 
         # get peak output deviation from initial steady state value
         output_states = states[self.key[output_node], :]

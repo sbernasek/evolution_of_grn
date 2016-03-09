@@ -9,13 +9,12 @@ from modules.fitness import *
 """
 TO DO:
     1. write robustness test
-    2. normalize by area in performance metric
-    2. make graphics for paper and video
-    3. write paper
+    2. store selected cells from each generation
+    3. only evaluate the NEW cells, to save time...
 """
 
 
-def evaluate(f, cells, input_node=None, output_node=None, ss_dict=None):
+def evaluate(f, cells, input_node=None, output_node=None, ss_dict=None, solve_if_stiff=True):
     """
     Score the performance of all cells.
 
@@ -25,6 +24,7 @@ def evaluate(f, cells, input_node=None, output_node=None, ss_dict=None):
         input_node (int) - index of node to which input signal is sent
         output_node (int) - index of node from which output is read
         ss_dict (dict) - dictionary in which keys are cell objects and values are steady state arrays
+        solve_if_stiff (bool) -  if False, discard stiff systems
 
     Returns:
         scores (list) - list of objective-space coordinates for each cell in cells
@@ -37,7 +37,7 @@ def evaluate(f, cells, input_node=None, output_node=None, ss_dict=None):
     scores = []
     for cell in cells:
         steady_states = ss_dict[cell]
-        score = f(cell, input_node=input_node, output_node=output_node, steady_states=steady_states)
+        score = f(cell, input_node=input_node, output_node=output_node, steady_states=steady_states, solve_if_stiff=solve_if_stiff)
         scores.append(score)
     return scores
 
@@ -68,7 +68,7 @@ def filter_scores(raw, tol=1e10):
     return filtered
 
 
-def run_simulation(generations=10, population_size=20, mutations_per_division=2, test=adaptation_test):
+def run_simulation(generations=10, population_size=20, mutations_per_division=2, solve_if_stiff=True):
     """
     Runs full simulation procedure.
 
@@ -76,7 +76,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
         generations (int) - number of growth/selection stages
         population_size (int) - number of cells per generation
         mutations_per_division (int) - number of mutations per cell cycle
-        test (function) - test function used to score each cell
+        solve_if_stiff (bool) -  if False, discard stiff systems
 
     Returns:
         populations (list) - dictionary of all cells selected throughout procedure. keys are generation numbers, while
@@ -126,7 +126,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
                 ss_dict[mutant] = steady_states
 
         # run dynamics and score each new cell
-        new_scores = evaluate(test, new_cells, input_node, output_node, ss_dict=ss_dict)
+        new_scores = evaluate(get_fitness, new_cells, input_node, output_node, ss_dict=ss_dict, solve_if_stiff=solve_if_stiff)
 
         # filter any scores with None, inf, nan, or values >1e15
         new_scores_considered = filter_scores(new_scores, tol=1e15)
@@ -136,7 +136,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
         if len(scores_considered) > 0:
 
             # specify whether maximizing or minimizing along each dimension (True means max), then get pareto front
-            goal = [False for _ in scores_considered[0]]
+            goal = [False, False]
             scores_selected = get_pareto_front(scores_considered, goal=goal)
 
             # merge selected old cells with selected new cells
