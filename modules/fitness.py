@@ -225,7 +225,7 @@ def get_null_mutant(parent):
     if sum(probabilities) == 0:
         return None
 
-    probabilities = [p/sum(probabilities) for p in probabilities]
+    probabilities = [p/float(sum(probabilities)) for p in probabilities]
 
     # select node type to be removed
     node_type = np.random.choice(['coding', 'non-coding', 'modified'], p=probabilities)
