@@ -155,7 +155,7 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
 
         # display time to complete current generation
         stop = time.time()
-        print('Generation ', gen, 'took', stop-start, 'seconds')
+        print('Generation %d took %4.2f seconds' % (gen, stop-start))
 
         # get topology distribution for current generation's networks
         #edge_counts, node_counts = zip(*list(map(lambda x: (len(x[0]), len(x[1])), [cell.get_topology() for cell in population])))

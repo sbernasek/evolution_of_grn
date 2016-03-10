@@ -180,7 +180,7 @@ class Cell:
 
         # re-normalize probabilities
         mutations, relative_probabiltiies = zip(*possible_mutations)
-        probabilities = list(map((lambda x: x/sum(relative_probabiltiies)), relative_probabiltiies))
+        probabilities = list(map((lambda x: x/float(sum(relative_probabiltiies))), relative_probabiltiies))
 
         # select mutation
         mutation_selected = np.random.choice(mutations, size=1, p=probabilities)
