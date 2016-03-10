@@ -114,9 +114,12 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
         ax0.set_xlabel('Time (min)', fontsize=16)
 
         # plot output level, output steady state, and output deviation from steady state
+        ss_vector = [steady_states[cell.key[output_node]] for _ in times]
         ax1.plot(times, output, '-b', label='Output', linewidth=3)
-        ax1.plot(times, [steady_states[cell.key[output_node]] for _ in times], '--b')
+        ax1.plot(times, ss_vector, '--b')
         ax1.plot(times, abs(output-steady_states[cell.key[output_node]]), '-r')
+        ax1.fill_between(times, ss_vector, output, color='blue', alpha=0.5)
+        ax1.fill_between(times, [0 for _ in range(0, len(times))], abs(output-steady_states[cell.key[output_node]]), color='red', alpha=0.5)
         ax1.set_ylim(0, 1.1*max(output))
         ax1.set_xlabel('Time (min)', fontsize=16)
         ax1.set_ylabel('Output and Deviation', fontsize=16)

@@ -2,19 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="b44289d1-0028-4c70-825e-783604ea1b7d" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/adaptation_tests.ipynb" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/population.p" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/populations.p" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/score_evolution.p" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/modules/cells.py" afterPath="$PROJECT_DIR$/modules/cells.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.ipynb_checkpoints/evolutionary_adaptation-checkpoint.ipynb" afterPath="$PROJECT_DIR$/.ipynb_checkpoints/evolutionary_adaptation-checkpoint.ipynb" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/evolutionary_adaptation.ipynb" afterPath="$PROJECT_DIR$/evolutionary_adaptation.ipynb" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.ipynb_checkpoints/evolutionary_robustness-checkpoint.ipynb" afterPath="$PROJECT_DIR$/.ipynb_checkpoints/evolutionary_robustness-checkpoint.ipynb" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/evolutionary_robustness.ipynb" afterPath="$PROJECT_DIR$/evolutionary_robustness.ipynb" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/modules/fitness.py" afterPath="$PROJECT_DIR$/modules/fitness.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/main.py" afterPath="$PROJECT_DIR$/main.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.ipynb_checkpoints/robustness_test-checkpoint.ipynb" afterPath="$PROJECT_DIR$/.ipynb_checkpoints/robustness_test-checkpoint.ipynb" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/robustness_test.ipynb" afterPath="$PROJECT_DIR$/robustness_test.ipynb" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
     <ignored path="Evolution_of_GRN.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -53,8 +46,8 @@
       <file leaf-file-name="fitness.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/modules/fitness.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.053699285" vertical-offset="1995" max-vertical-offset="3855">
-              <caret line="136" column="39" selection-start-line="136" selection-start-column="39" selection-end-line="136" selection-end-column="39" />
+            <state vertical-scroll-proportion="0.75179" vertical-offset="1170" max-vertical-offset="3900">
+              <caret line="120" column="49" selection-start-line="120" selection-start-column="49" selection-end-line="120" selection-end-column="49" />
               <folding>
                 <element signature="e#21#43#0" expanded="true" />
               </folding>
@@ -692,8 +685,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/modules/fitness.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.053699285" vertical-offset="1995" max-vertical-offset="3855">
-          <caret line="136" column="39" selection-start-line="136" selection-start-column="39" selection-end-line="136" selection-end-column="39" />
+        <state vertical-scroll-proportion="0.75179" vertical-offset="1170" max-vertical-offset="3900">
+          <caret line="120" column="49" selection-start-line="120" selection-start-column="49" selection-end-line="120" selection-end-column="49" />
           <folding>
             <element signature="e#21#43#0" expanded="true" />
           </folding>
