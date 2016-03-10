@@ -8,7 +8,7 @@ from modules.fitness import *
 
 """
 TO DO:
-    1. write robustness test
+    1. write robustness test (error free?)
     2. normalize by area in performance metric
     2. make graphics for paper and video
     3. write paper

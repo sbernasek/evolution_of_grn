@@ -81,14 +81,16 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
     # retrieve output dynamics
     output = states[cell.key[output_node], :]
 
-    # integrate absolute difference between output and its steady state level
+    # integrate absolute difference between output and its steady state level, then normalize by total area under SS
     cumulative_error = scipy.integrate.trapz(abs(output-steady_states[cell.key[output_node]]), x=times)
+    total_area = steady_states[cell.key[output_node]] * times[-1]
+    performance = cumulative_error / total_area
 
     # plot dynamics
     if plot is True:
 
-        # get cumulative error at each point
-        cumulative_errors = scipy.integrate.cumtrapz(abs(output-steady_states[cell.key[output_node]]), x=times)
+        # get cumulative error at each point, normalized by cumulative steady state level up to that point
+        cumulative_errors = scipy.integrate.cumtrapz(abs(output-steady_states[cell.key[output_node]]), x=times) / (times[1:] * steady_states[cell.key[output_node]])
 
         if ax is None:
             ax0, ax1, ax2 = create_subplot_figure(dim=(1, 3), size=(24, 6))
@@ -120,14 +122,14 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
         ax1.set_ylabel('Output and Deviation', fontsize=16)
 
         # plot cumulative error
-        ax2.set_ylabel('Cumulative Deviation', fontsize=16)
+        ax2.set_ylabel('Performance (normalized cumulative deviation)', fontsize=16)
         ax2.set_xlabel('Time (min)', fontsize=16)
         ax2.plot(times[1:], cumulative_errors, '-r', linewidth=3)
         ax2.plot(times[-1], cumulative_errors[-1], '.r', markersize=25)
         ax2.set_xlim(0, times[-1]+10)
         ax2.set_ylim(0, 1.2*max(cumulative_errors))
 
-    score = [cumulative_error, energy]
+    score = [performance, energy]
 
     return score
 

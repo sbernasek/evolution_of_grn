@@ -950,15 +950,19 @@ class Cell:
             solver.set_initial_value(initial_states, 0).set_f_params(input_signal, input_node)
             solver.integrate(integration_length)
 
-        # if dopri5 fails, use vode (slow, but more likely to work for stiff systems)
+        # if dopri5 fails, use vode (slow, but more likely to work for stiff systems). if vode fails, return None
         except UserWarning:
 
             if solve_if_stiff is True:
-                solver = scipy.integrate.ode(self.get_species_rates).set_integrator('vode', method='bdf')
-                solver.set_initial_value(initial_states, 0).set_f_params(input_signal, input_node)
-                while solver.successful() and solver.t < integration_length:
-                    solver.integrate(integration_length, step=True)
-                    solution.append([solver.t] + [y_i for y_i in solver.y])
+                try:
+                    solver = scipy.integrate.ode(self.get_species_rates).set_integrator('vode', method='bdf')
+                    solver.set_initial_value(initial_states, 0).set_f_params(input_signal, input_node)
+                    while solver.successful() and solver.t < integration_length:
+                        solver.integrate(integration_length, step=True)
+                        solution.append([solver.t] + [y_i for y_i in solver.y])
+                except:
+                    print('stiff equation solver failed')
+                    return None, None, None
             else:
                 return None, None, None
 
