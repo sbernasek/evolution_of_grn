@@ -26,6 +26,7 @@ Long term:
     2. time delays for regulation (nuclear translocation)
     3. split cell class into network structure and network dynamics classes
     4. compile linear reaction stoichiometries in advance so the get_rate function can be vectorized
+    5. why are we selecting such low protein levels?
 """
 
 

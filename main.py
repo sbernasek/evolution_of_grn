@@ -212,7 +212,7 @@ def plot_1D_trajectory(populations, obj=0):
     return ax
 
 
-def plot_2D_trajectory(populations, obj=None):
+def plot_2D_trajectory(populations, obj=None, connect_front=False, labels=None):
     """
     Plots evolutionary trajectory of two specified objective functions in objective-space.
 
@@ -220,6 +220,8 @@ def plot_2D_trajectory(populations, obj=None):
         populations (dict) - dictionary of all cells selected throughout procedure. keys are generation numbers, while
         values are dictionaries of (cell: scores) entries.
         obj (tup) - tuple of indices of objective-coordinates to be visualized
+        connect_front (bool) - if True, draw line connecting pareto front
+        labels (list) - list of string labels for objective function names
 
     Returns:
         ax (axes object)
@@ -238,31 +240,45 @@ def plot_2D_trajectory(populations, obj=None):
     ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
 
     # if objective space is two dimensional, plot points on objective-space plane
-    max_x = 1
-    max_y = 1
+    min_x, max_x = 1e3, 1e-3
+    min_y, max_y = 1e10, 1e-10
     for gen, scores in score_evolution.items():
 
         # plot all points in generation
         coordinates = [coordinate for coordinate in zip(*scores)]
         x, y = coordinates[obj[0]], coordinates[obj[1]]
 
-
         color = [gen/len(score_evolution), 0/256, 0/256]
-        ax.plot(x, y, '.k', markersize=25, color=color, label='Generation %d' % gen)
+        ax.plot(x, y, '.', markersize=25, color=color)
 
-        # update maxima for plot axis scaling
+        if connect_front is True and gen == list(populations.keys())[-1]:
+            y, x = zip(*sorted(zip(y, x), reverse=True))
+            ax.plot(x, y, '-', linewidth=5, color=color, zorder=0)
+
+        # update minima/maxima for plot axis scaling
+        min_x, min_y = min(x + (min_x,)), min(y + (min_y,))
         max_x, max_y = max(x + (max_x,)), max(y + (max_y,))
 
     # format plot
-    # ax.set_xlim(0, 1.2*max_x)
-    # ax.set_ylim(0, 1.2*max_y)
+    ax.set_xlim(0.75*min_x, 1.25*max_x)
+    ax.set_ylim(0.75*min_y, 1.25*max_y)
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlabel('Objective %d' % obj[0], fontsize=16)
-    ax.set_ylabel('Objective %d' % obj[1], fontsize=16)
     ax.set_title('Evolutionary Trajectory', fontsize=16)
 
-    if len(score_evolution) < 10:
-        ax.legend(loc=0)
+    if labels is None:
+        ax.set_xlabel('Objective %d' % obj[0], fontsize=16)
+        ax.set_ylabel('Objective %d' % obj[1], fontsize=16)
+    else:
+        ax.set_xlabel(labels[0], fontsize=16)
+        ax.set_ylabel(labels[1], fontsize=16)
+
+    # plot artists
+    ax.plot([], '.k', markersize=25, label='First Generation')
+    ax.plot([], '.', markersize=25, color=[0.5, 0, 0], label='Middle Generation')
+    ax.plot([], '.r', markersize=25, label='Last Generation')
+    if connect_front is True:
+        ax.plot([], '-r', linewidth=5, label='Pareto Front')
+    ax.legend(loc=0)
 
     return ax
