@@ -6,6 +6,8 @@ import copy
 import scipy.integrate
 import scipy.optimize
 import warnings
+from operator import mul
+import functools
 from tabulate import tabulate
 from modules.reactions import *
 from modules.parameters import *
@@ -23,6 +25,7 @@ Long term:
     1. dimerization + reverse
     2. time delays for regulation (nuclear translocation)
     3. split cell class into network structure and network dynamics classes
+    4. compile linear reaction stoichiometries in advance so the get_rate function can be vectorized
 """
 
 
@@ -665,50 +668,46 @@ class Cell:
         """
         Computes rate of each reaction.
 
+        TODO: if this can be vectorized we would save a ton of time
+
         Parameters:
             concentrations (np array) - Nx1 vector of current species concentrations
         Returns:
-            rxn_rates (list) - list of M current reaction rates
+            rxn_rates (np array) - array of M current reaction rates
         """
 
-        rxn_rates = []
-        for rxn in self.reactions:
+        # iterate through all rate mods, storing their rate enhancement/repression terms for each gene
+        mods = {target: {'activation': [], 'repression': []} for target in (self.non_coding_rnas + self.coding_rnas)}
+        for mod in self.rate_mods:
+            tf = self.key[mod.substrate]
+            tf_impact = mod.get_rate_modifier(concentrations[tf])
+            mods[mod.target][mod.mod_type].append(tf_impact)
+
+        # initialize rate vector
+        rxn_rates = np.empty((len(self.reactions)))
+
+        # compute rate of each reaction
+        for i, rxn in enumerate(self.reactions):
 
             # compute transcription rates
-            if len(rxn.reactants) == 0:
-                rate = rxn.get_rate(rxn.reactants)
+            if rxn.rxn_type == 'transcription':
+                mrna = rxn.products[0]
+                rate = 1
+                rate *= max([rxn.rate_constant] + mods[mrna]['activation'])
+                if len(mods[mrna]['repression']) > 0:
+                   rate *= functools.reduce(mul, mods[mrna]['repression'])
 
-                # check for and apply any transcriptional rate modifiers
-                if rxn.rxn_type == 'transcription':
+            # compute mass action rates
+            elif rxn.reactants != []:
+                reactant_concentrations = [concentrations[self.key[reactant]] for reactant in rxn.reactants]
+                rate = rxn.get_rate(reactant_concentrations)
 
-                    # set base rate to one
-                    rate = 1
-
-                    activation_strength = [rxn.rate_constant]
-                    for mod in self.rate_mods:
-                        if mod.target == rxn.products[0]:
-
-                            # get transcription factor index
-                            tf = self.key[mod.substrate]
-
-                            # compute total transcription rate as max(activation_strengths)*product(repression_strengths)
-                            tf_impact = mod.get_rate_modifier(concentrations[tf])
-                            if mod.mod_type == 'activation':
-                                activation_strength.append(tf_impact)
-                            else:
-                                rate *= tf_impact
-
-                    # apply largest promoter effect
-                    if len(activation_strength) > 0:
-                        rate *= max(activation_strength)
-
+            # compute degradation rates
             else:
-                # compute rates for other reaction types
-                reactants = np.array([self.key[reactant] for reactant in rxn.reactants])
-                rate = rxn.get_rate(concentrations[reactants])
+                rate = rxn.rate_constant
 
-            # add reaction rate to rxn rate vector
-            rxn_rates.append(rate)
+            # add reaction rate to rate vector
+            rxn_rates[i] = rate
 
         return rxn_rates
 
@@ -984,7 +983,7 @@ class Cell:
 
         Parameters:
             t (float) - current time
-            state (list) - list of current state values
+            state (np array) - array of current state values
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
             input_node (int) - index of gene to which activation signal is sent
 
@@ -1003,7 +1002,7 @@ class Cell:
 
         Parameters:
             t (float) - current time
-            state (list) - list of current state values
+            state (np array) - array of current state values
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
             input_node (int) - index of mRNA whose transcription rate is impacted by input signal
 
@@ -1031,6 +1030,9 @@ class Cell:
 
     def get_energy_usage(self, times, states, input_signal, input_node, atp_per_rxn):
         """
+
+        TODO: This is horrendous! calling reaction rates at every timestep is a terrible idea
+
         Computes total atp usage for the current simulation.
 
         Parameters:
@@ -1123,7 +1125,7 @@ class Cell:
          state solver.
 
         Parameters:
-            states (list) - list of current state values
+            states (np array) - array of current state values
             input_node (int) - index of node to which input signal is sent
             input_signal (float) - magnitude of input signal
 

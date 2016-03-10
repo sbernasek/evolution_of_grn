@@ -1,6 +1,7 @@
 __author__ = 'Sebi'
 
 import functools
+from operator import mul
 from modules.parameters import *
 
 
@@ -47,12 +48,8 @@ class Reaction:
         Returns:
             rate (float) - rate of reaction
         """
-
-        activity = 1
-        if len(self.reactants) > 0:
-            activity = functools.reduce(lambda x, y: x*y, concentrations)
-        rate = self.rate_constant * activity
-        return rate
+        activity = functools.reduce(mul, concentrations)
+        return self.rate_constant * activity
 
 
 class TranscriptionModification:
