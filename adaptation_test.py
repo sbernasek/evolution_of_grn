@@ -15,8 +15,8 @@ Running this cell should create two files:   adaptation_test_results.p   and   a
 """
 
 # define simulation size here
-generations = 100
-population_size = 50
+generations = 200
+population_size = 100
 
 # run simulation
 populations = run_simulation(generations=generations, population_size=population_size, mutations_per_division=2)
