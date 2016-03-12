@@ -1,6 +1,9 @@
 __author__ = 'Sebi'
 
 
+# define probabilities for whether mutation involves a node, an edge, or a rate constant
+mutation_type_probabilities = [0.2, 0.5, 0.3]
+
 # species parameters:
 mrna_length = 1500  # nucleotides, ~1000 for e.coli, 1500 for yeast, 3k for drosophila
 protein_length = 400  # amino acids, 300 for e.coli, 385 for yeast, ~600 for mammals

@@ -166,8 +166,8 @@ class Cell:
         """
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
-        # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.2, 0.5, 0.3])
+        # first select whether mutation involves a node, an edge, or a rate constant
+        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=mutation_type_probabilities)
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -1234,6 +1234,10 @@ class Cell:
         # apply new step change to input and simulate response
         input_signal = [(0, 2), (10, 2)]
         times, states, _ = self.simulate(input_signal, input_node=input_node, ic=steady_states)
+
+        # if solver failed, return None so simulation is thrown out
+        if states is None:
+            return None
 
         # get peak output deviation from initial steady state value
         output_states = states[self.key[output_node], :]
