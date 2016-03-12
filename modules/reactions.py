@@ -37,7 +37,35 @@ class Reaction:
 
         self.atp_usage = atp_usage
         if self.atp_usage is None:
-            self.atp_usage = sum(atp_requirements[cell_type][rxn_type])
+            if rxn_type is not None:
+                self.atp_usage = sum(atp_requirements[cell_type][rxn_type])
+            else:
+                self.atp_usage = None
+
+    @staticmethod
+    def from_json(js):
+
+        # create instance
+        rxn = Reaction()
+
+        # get each attribute from json dictionary
+        rxn.reactants = js['reactants']
+        rxn.products = js['products']
+        rxn.consumed = js['consumed']
+        rxn.rate_constant = js['rate_constant']
+        rxn.rxn_type = js['rxn_type']
+        rxn.atp_usage = js['atp_usage']
+        return rxn
+
+    def to_json(self):
+        return {
+            # return each attribute
+            'reactants': self.reactants,
+            'products': self.products,
+            'consumed': self.consumed,
+            'rate_constant': self.rate_constant,
+            'rxn_type': self.rxn_type,
+            'atp_usage': self.atp_usage}
 
     def get_rate(self, concentrations):
         """
@@ -54,7 +82,7 @@ class Reaction:
 
 class TranscriptionModification:
 
-    def __init__(self, substrate, target, mod_type, dissociation_constant, promotion_strength=1, cooperativity=1):
+    def __init__(self, substrate=None, target=None, mod_type=None, dissociation_constant=dna_binding_affinity, promotion_strength=promoter_strength, cooperativity=hill_coefficient):
         """
         Class defines reactions that modify the rates of other reactions.
 
@@ -72,11 +100,33 @@ class TranscriptionModification:
         self.dissociation_constant = dissociation_constant
         self.promotion_strength = promotion_strength
         self.cooperativity = cooperativity
+        self.mod_type = mod_type
 
-        if mod_type not in ['activation', 'repression']:
-            print('Error: Transcription factor type not recognized.')
-        else:
-            self.mod_type = mod_type
+    @staticmethod
+    def from_json(js):
+
+        # create instance
+        mod = TranscriptionModification()
+
+        # get each attribute from json dictionary
+        mod.substrate = js['substrate']
+        mod.target = js['target']
+        mod.dissociation_constant = js['dissociation_constant']
+        mod.promotion_strength = js['promotion_strength']
+        mod.cooperativity = js['cooperativity']
+        mod.mod_type = js['mod_type']
+
+        return mod
+
+    def to_json(self):
+        return {
+            # return each attribute
+            'substrate': self.substrate,
+            'target': self.target,
+            'dissociation_constant': self.dissociation_constant,
+            'promotion_strength': self.promotion_strength,
+            'cooperativity': self.cooperativity,
+            'mod_type': self.mod_type}
 
     def get_rate_modifier(self, tf):
         """

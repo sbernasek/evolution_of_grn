@@ -1,9 +1,11 @@
 __author__ = 'Sebi'
 
-import time as time
 from modules.cells import *
 from modules.pareto import *
 from modules.fitness import *
+from modules.analysis import *
+import json
+import os
 
 
 """
@@ -12,6 +14,7 @@ TO DO:
     2. normalize by area in performance metric
     2. make graphics for paper and video
     3. write paper
+    4. write outer wrapper for file saving, if sim fails delete file
 """
 
 
@@ -67,21 +70,34 @@ def filter_scores(raw, tol=1e10):
 
     return filtered
 
-
-def run_simulation(generations=10, population_size=20, mutations_per_division=2, test=adaptation_test):
+def run_simulation(directory=None, generations=10, population_size=20, mutations_per_division=2, test='adaptation'):
     """
     Runs full simulation procedure.
 
     Parameters:
+        directory (str) - path to directory in which results are stored as a subdirectory of json files
         generations (int) - number of growth/selection stages
         population_size (int) - number of cells per generation
         mutations_per_division (int) - number of mutations per cell cycle
-        test (function) - test function used to score each cell
+        test (str) - name of test function used to score each cell
 
     Returns:
         populations (list) - dictionary of all cells selected throughout procedure. keys are generation numbers, while
         values are dictionaries of (cell: scores) entries.
     """
+
+    # if results are to be saved, initialize a new directory corresponding to this simulation
+    if directory is not None:
+        version = 0
+        while True:
+            new_path = directory + test + '_' + str(generations) + 'x' + str(population_size) + '_v' + str(version)
+            if not os.path.exists(new_path):
+                os.makedirs(new_path)
+                break
+            version += 1
+    else:
+        print('No directory specified.')
+        return
 
     # define input and output to be tested
     input_node = 2
@@ -126,7 +142,11 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
                 ss_dict[mutant] = steady_states
 
         # run dynamics and score each new cell
-        new_scores = evaluate(test, new_cells, input_node, output_node, ss_dict=ss_dict)
+        if test == 'adaptation':
+            scoring_function = adaptation_test
+        elif test == 'robustness':
+            scoring_function = robustness_test
+        new_scores = evaluate(scoring_function, new_cells, input_node, output_node, ss_dict=ss_dict)
 
         # filter any scores with None, inf, nan, or values >1e15
         new_scores_considered = filter_scores(new_scores, tol=1e15)
@@ -151,28 +171,15 @@ def run_simulation(generations=10, population_size=20, mutations_per_division=2,
             break
 
         # store population of selected cells along with corresponding scores
-        populations[gen] = {cell: score for cell, score in score_dict.items()}
+        current_generation = {i: {'cell': cell.to_json(), 'scores': score} for i, (cell, score) in enumerate(score_dict.items())}
+
+        # if directory was specified, write current population with corresponding scores to json
+        with open(new_path + '/' + str(gen) + '.json', mode='w', encoding='utf-8') as f:
+            json.dump(current_generation, f)
 
         # display time to complete current generation
         stop = time.time()
-        print('Generation %d took %4.2f seconds' % (gen, stop-start))
-
-        # get topology distribution for current generation's networks
-        #edge_counts, node_counts = zip(*list(map(lambda x: (len(x[0]), len(x[1])), [cell.get_topology() for cell in population])))
-        #print('Generation', gen, ': %g edges in average selected network' % np.mean(edge_counts))
-
-    return populations
-
-# some other stuff should we want it for results/analysis
-    # # show topology of a random cell in the final population
-    # random_cell = np.random.choice(population)
-    # random_cell.show_topology(graph_layout='shell')
-    #
-    # # get some basic distribution statistics
-    # age_distribution = [cell.name for cell in population]
-    # edge_count_distribution, node_count_distribution = zip(*list(map(lambda x:(len(x[0]), len(x[1])), [cell.get_topology() for cell in population])))
-    # network_gene_count_distribution = [len(cell.removable_genes+cell.non_coding_rnas) for cell in population]
-
+        # print('Generation %d took %4.2f seconds' % (gen, stop-start))
 
 def plot_1D_trajectory(populations, obj=0):
     """

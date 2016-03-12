@@ -6,8 +6,6 @@ import copy
 import scipy.integrate
 import scipy.optimize
 import warnings
-from operator import mul
-import functools
 from tabulate import tabulate
 from modules.reactions import *
 from modules.parameters import *
@@ -75,6 +73,52 @@ class Cell:
 
         # compile stoiciometric matrix
         self.compile_stoichiometry()
+
+    @staticmethod
+    def from_json(js):
+
+        # create instance
+        cell = Cell(name=None)
+
+        # get each attribute from json dictionary
+        cell.name = js['name']
+        cell.cell_type = js['cell_type']
+        cell.key = js['key']
+        cell.species_count = js['species_count']
+        cell.network_dimension = js['network_dimension']
+        cell.coding_rnas = js['coding_rnas']
+        cell.proteins = js['proteins']
+        cell.non_coding_rnas = js['non_coding_rnas']
+        cell.modified_proteins = js['modified_proteins']
+        cell.removable_genes = js['removable_genes']
+        cell.permanent_genes = js['permanent_genes']
+        cell.stoichiometry = np.array(js['stoichiometry'])
+
+        # get attributes containing nested classes
+        cell.reactions = [Reaction.from_json(x) for x in js['reactions']]
+        cell.rate_mods = [TranscriptionModification.from_json(x) for x in js['rate_mods']]
+
+        return cell
+
+    def to_json(self):
+        return {
+            # return each attribute
+            'name': self.name,
+            'cell_type': self.cell_type,
+            'key': self.key,
+            'species_count': self.species_count,
+            'network_dimension': self.network_dimension,
+            'coding_rnas': self.coding_rnas,
+            'proteins': self.proteins,
+            'non_coding_rnas': self.non_coding_rnas,
+            'modified_proteins': self.modified_proteins,
+            'removable_genes': self.removable_genes,
+            'permanent_genes': self.permanent_genes,
+            'stoichiometry': self.stoichiometry.tolist(),
+
+            # return attributes containing nested classes
+            'reactions': [rxn.to_json() for rxn in self.reactions],
+            'rate_mods': [mod.to_json() for mod in self.rate_mods]}
 
     def divide(self, num_mutations):
         """
@@ -418,10 +462,13 @@ class Cell:
 
         if tf is None:
             tf = np.random.choice(self.proteins)
+            tf = int(tf)
         if gene is None:
             gene = np.random.choice(self.coding_rnas + self.non_coding_rnas)
+            gene = int(gene)
         if mod_type is None:
             mod_type = np.random.choice(['activation', 'repression'])
+            mod_type = str(mod_type)
 
         # create rate modifier
         mod = TranscriptionModification(substrate=tf, target=gene, mod_type=mod_type,
@@ -447,10 +494,12 @@ class Cell:
 
         # select a non-coding rna
         micro_rna = np.random.choice(self.non_coding_rnas)
+        micro_rna = int(micro_rna)
 
         # select any target rna if none were provided
         if target is None:
             target = np.random.choice(self.non_coding_rnas + self.coding_rnas)
+            target = int(target)
 
         # create post-transcriptional modification reaction
         rxn = Reaction(reactants=[micro_rna, target], products=None, rate_constant=PTR_RATE_CONSTANT, consumed=[micro_rna, target], rxn_type='miRNA_silencing', cell_type=self.cell_type)
@@ -499,12 +548,15 @@ class Cell:
 
         if degraded is None and enzyme is None:
             degraded, enzyme = np.random.choice(self.proteins, size=2, replace=False)
+            degraded = int(degraded)
+            enzyme = int(enzyme)
 
         elif degraded is None and enzyme is not None:
             degraded = np.random.choice(self.proteins, size=1, replace=False)
-
+            degraded = int(degraded)
         elif degraded is not None and enzyme is None:
             enzyme = np.random.choice(self.proteins, size=1, replace=False)
+            enzyme = int(enzyme)
 
         # create reaction
         rxn = Reaction(reactants=[degraded, enzyme], products=None, rate_constant=CATALYTIC_DEGRADATION_RATE_CONSTANT, consumed=[degraded], rxn_type='catalytic_degradation', cell_type=self.cell_type)
@@ -543,6 +595,7 @@ class Cell:
             # randomly choose one protein substrate to be modified
             if substrate is None:
                 substrate = np.random.choice(self.proteins)
+                substrate = int(substrate)
 
             # if target product is not specified, first decide whether substrate is itself a modified protein. if it is,
             # randomly decide whether to re-form its parent or create new modified form. otherwise, create new modified form.
@@ -553,7 +606,8 @@ class Cell:
 
                     # set product to one of modified protein's parent forms
                     parents = [rxn.reactants[0] for rxn in self.reactions if substrate in rxn.products]
-                    product = int(np.random.choice(parents))
+                    product = np.random.choice(parents)
+                    product = int(product)
 
                 else:
 
@@ -582,7 +636,7 @@ class Cell:
                 probabilities = [1, 0]
 
             # select mechanism
-            rxn_type = np.random.choice(['modification', 'catalytic_modification'], p=probabilities)
+            rxn_type = str(np.random.choice(['modification', 'catalytic_modification'], p=probabilities))
 
             if rxn_type == 'modification':
 
@@ -595,6 +649,7 @@ class Cell:
                 # randomly choose one protein as an enzyme to catalyze modification of the substrate (exclude autocatalysis)
                 if enzyme is None:
                     enzyme = np.random.choice([protein for protein in self.proteins if protein != substrate and protein != product])
+                    enzyme = int(enzyme)
 
                 # get rate constant and define reactants
                 rate_constant = CATALYTIC_DEGRADATION_RATE_CONSTANT

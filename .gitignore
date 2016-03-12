@@ -4,4 +4,5 @@
 *.ipynb_checkpoints/
 *.p
 *.prof
-
+*.json
+Data/*
