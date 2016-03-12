@@ -167,7 +167,7 @@ class Cell:
         # determine probability of each type of mutation by construction list of (mutation, relative-probability) tuples
 
         # first select whether mutation involves a node or an edge (1:1 odds)
-        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.5, 0.5, 0.0])
+        mutation_type = np.random.choice(['node', 'edge', 'constant'], p=[0.2, 0.5, 0.3])
 
         if mutation_type == 'node':
             # add/remove a node from the network
@@ -177,7 +177,7 @@ class Cell:
             num_non_coding_genes = len(self.non_coding_rnas)
 
             # set target network size (i.e. approximate node count at which node additional/removal are equally likely)
-            target_network_size = 1
+            target_network_size = 3
 
             # define possible mutations and corresponding probabilities
             possible_mutations = [

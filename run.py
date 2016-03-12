@@ -7,7 +7,7 @@ from main import *
 test = "robustness"
 
 # define simulation size
-generations = 300
+generations = 200
 population_size = 50
 
 # write data to specified directory
@@ -17,4 +17,4 @@ results_directory = 'data/'
 run_simulation(directory=results_directory, generations=generations, population_size=population_size, mutations_per_division=2, test=test)
 
 # to generate profile - must run at command line
-# python -m cProfile -o data/simulation.prof run.py
+# nohup python -m cProfile -o data/simulation.prof run.py &

@@ -24,8 +24,9 @@ def load_results_from_json(file_path):
     # initialize results
     results = {}
 
-    # iterate across each generation
-    for i, file in enumerate(sorted(files)):
+    # iterate across each file in generational order
+    get_generation = lambda x: int(x[len(file_path): -len('.json')])
+    for i, file in enumerate(sorted(files, key=get_generation)):
 
         # open json and read contents
         with open(file, mode='r', encoding='utf-8') as f:
@@ -54,7 +55,7 @@ def get_ordered_front(results):
 
     # sort score and cell lists from left to right on first objective function axis
 
-    scores, cells = zip(*sorted(zip(scores, cells), key = lambda x: x[0]))
+    scores, cells = zip(*sorted(zip(scores, cells), key=lambda x: x[0]))
 
 
     return cells, scores
