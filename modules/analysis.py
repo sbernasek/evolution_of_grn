@@ -46,6 +46,7 @@ def plot_pareto_front_size(results):
 
 def get_ordered_front(results):
 
+
     unordered_front = list(results.values())[-1]
 
     cells = unordered_front.keys() # list of unordered cells
@@ -179,6 +180,5 @@ def get_topology_from_front(results):
         # add edge density
         edges_per_node.append(len(edges)/len(nodes))
         edges_per_gene.append(len(edges)/ len([node for node, node_type in nodes.items() if node_type != 'modified protein']) )
-
 
     return robustness, energy_usage, edge_count, node_count, edges_per_node, edges_per_gene

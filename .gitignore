@@ -6,3 +6,5 @@
 *.prof
 *.json
 Data/*
+*.out
+
