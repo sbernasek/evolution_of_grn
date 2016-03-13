@@ -1,10 +1,10 @@
 __author__ = 'Sebi'
 
+import numpy as np
 import scipy.integrate
 import copy as copy
-import time as time
 from modules.plotting import *
-from modules.signals import *
+from modules.parameters import plateau_count, plateau_duration
 
 """
 TO DO:
@@ -55,21 +55,18 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
     # if input_random is True, generate a sequence of random plateaus
     if input_random is True:
 
-        # set plateau count and duration for input signal
-        plateau_count = 3
-        plateau_duration = 200
-
         # create random sequence of plateaus for disturbance signal
         input_level = 1
         input_signal = [(0, input_level)]
         for i in range(1, plateau_count+1):
-            next_step = np.random.choice([num for num in range(1, 5) if num != input_level])
+            next_step = np.random.choice([num for num in range(1, 6) if num != input_level])
             input_signal.append((i*plateau_duration, next_step))
             input_level = next_step
 
     else:
         # use specific sequence of plateaus for input signal
         input_signal = [(0, 1), (100, 3), (200, 5), (300, 3), (400, 1), (500, 1)]
+        #input_signal = [(0, 0.1), (300, 0)]
 
     # run simulation
     times, states, energy = cell.simulate(input_signal, input_node=input_node, ic=steady_states, solve_if_stiff=solve_if_stiff)
@@ -79,29 +76,25 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
         return [None, None]
 
     # retrieve output dynamics
+    output_steady_state = steady_states[cell.key[output_node]]
     output = states[cell.key[output_node], :]
 
     # integrate absolute difference between output and its steady state level, then normalize by total area under SS
-    cumulative_error = scipy.integrate.trapz(abs(output-steady_states[cell.key[output_node]]), x=times)
-    total_area = steady_states[cell.key[output_node]] * times[-1]
-    performance = cumulative_error / total_area
+    performance = scipy.integrate.trapz(abs(output/output_steady_state-1), x=times) / times[-1]
 
     # plot dynamics
     if plot is True:
 
-        # get cumulative error at each point, normalized by cumulative steady state level up to that point
-        cumulative_errors = scipy.integrate.cumtrapz(abs(output-steady_states[cell.key[output_node]]), x=times) / (times[1:] * steady_states[cell.key[output_node]])
-
+        # create axes and set tick label size
         if ax is None:
-            ax0, ax1, ax2 = create_subplot_figure(dim=(1, 3), size=(24, 6))
+            axes = create_subplot_figure(dim=(1, 3), size=(24, 6))
+            ax0, ax1, ax2 = axes
 
-            # create proxy artists for legend
-            ax1.plot([], '-b', label="Output", linewidth=3)
-            ax1.plot([], '--b', label="Output Steady State", linewidth=3)
-            ax1.plot([], '-r', label="Deviation from Steady State", linewidth=3)
-            ax2.plot([], '.r', label="Performance Score", markersize=25)
-            ax1.legend(loc=0)
-            ax2.legend(loc=2)
+            for ax in axes:
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(16)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(16)
 
         else:
             ax0, ax1, ax2 = ax
@@ -113,19 +106,20 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
         ax0.set_ylabel('Input Signal', fontsize=16)
         ax0.set_xlabel('Time (min)', fontsize=16)
 
-        # plot output level, output steady state, and output deviation from steady state
-        ss_vector = [steady_states[cell.key[output_node]] for _ in times]
-        ax1.plot(times, output, '-b', label='Output', linewidth=3)
-        ax1.plot(times, ss_vector, '--b')
-        ax1.plot(times, abs(output-steady_states[cell.key[output_node]]), '-r')
-        ax1.fill_between(times, ss_vector, output, color='blue', alpha=0.5)
-        ax1.fill_between(times, [0 for _ in range(0, len(times))], abs(output-steady_states[cell.key[output_node]]), color='red', alpha=0.5)
-        ax1.set_ylim(0, 1.1*max(output))
+        # plot normalized output level
+
+        ax1.plot(times, output/output_steady_state, '-b', label='Normalized Output', linewidth=3)
+        ax1.fill_between(times, np.ones((len(times))), output/output_steady_state, color='blue', alpha=0.5)
+        ax1.set_ylim(0, 1.1*np.max(output/output_steady_state))
+        ax1.set_xlim(0, times[-1])
         ax1.set_xlabel('Time (min)', fontsize=16)
-        ax1.set_ylabel('Output and Deviation', fontsize=16)
+        ax1.set_ylabel('Output Relative to Steady State', fontsize=16)
+
+        # get cumulative relative error at each point
+        cumulative_errors = scipy.integrate.cumtrapz(abs(output/output_steady_state - 1), x=times) / times[1:]
 
         # plot cumulative error
-        ax2.set_ylabel('Performance (normalized cumulative deviation)', fontsize=16)
+        ax2.set_ylabel('Adaptation Score', fontsize=16)
         ax2.set_xlabel('Time (min)', fontsize=16)
         ax2.plot(times[1:], cumulative_errors, '-r', linewidth=3)
         ax2.plot(times[-1], cumulative_errors[-1], '.r', markersize=25)

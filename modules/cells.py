@@ -1,11 +1,13 @@
 __author__ = 'Sebi'
 
 import numpy as np
+import scipy.integrate
 import networkx as nx
 import copy
-import scipy.integrate
 import scipy.optimize
 import warnings
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 from tabulate import tabulate
 from modules.reactions import *
 from modules.parameters import *
@@ -14,6 +16,10 @@ from modules.plotting import *
 warnings.filterwarnings('error')
 
 """
+NEED TO CHECK:
+    1. Input overrides input node's transcription rate... so regulation of input node doesn't do anything. Solution:
+    create a new permanent node class to represent input
+
 TO DO:
     1. add new types of input (i.e. direct protein level)
     2. speed up ode solver... maybe cython?
@@ -844,7 +850,7 @@ class Cell:
 
         return edge_list, node_labels, node_key
 
-    def show_topology(self, graph_layout='shell', input_node=None, output_node=None, retall=False):
+    def show_topology(self, graph_layout='shell', input_node=None, output_node=None, edge_labels=False, retall=False):
         """
         Generates networkx visualization of network topology.
 
@@ -852,6 +858,7 @@ class Cell:
             graph_layout (string) - method used to arrange network nodes in space
             input_node (int) - index of node to which input signal is sent
             output_node (int) - index of node from which output is retrieved
+            edge_labels (bool) - if True, label edges with interaction type
             retall (bool) - if True, return axes
         """
 
@@ -864,10 +871,10 @@ class Cell:
             return
 
         # display options
-        node_size = 10000
-        node_alpha = 1.0
-        node_text_size = 10
-        edge_alpha = 1
+        node_size = 12000
+        node_alpha = 1
+        node_text_size = 24
+        edge_alpha = 0.5
         edge_text_pos = 0.4
 
         # create networkx graph
@@ -898,9 +905,9 @@ class Cell:
         non_coding_genes = [node for node, node_type in node_labels.items() if node_type == 'non-coding gene']
         modified_proteins = [node for node, node_type in node_labels.items() if node_type == 'modified protein']
 
-        # draw green permanent genes
+        # draw cyan permanent genes
         if len(permanent_genes) > 0:
-            nx.draw_networkx_nodes(g, pos, nodelist=permanent_genes, node_color='g', node_size=node_size, alpha=node_alpha)
+            nx.draw_networkx_nodes(g, pos, nodelist=permanent_genes, node_color='c', node_size=node_size, alpha=node_alpha)
 
         # draw cyan coding genes
         if len(removable_genes) > 0:
@@ -923,13 +930,14 @@ class Cell:
             else:
                 down_regulating_edges[(edge[0], edge[1])] = edge[2]
 
-        # draw green up regulating edges
-        nx.draw_networkx_edges(g, pos, edgelist=up_regulating_edges.keys(), width=3, alpha=edge_alpha, edge_color='g')
-        nx.draw_networkx_edge_labels(g, pos, edge_labels=up_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
+        # draw green upregulating and red downregulating edges
+        nx.draw_networkx_edges(g, pos, edgelist=up_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='g')
+        nx.draw_networkx_edges(g, pos, edgelist=down_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='r')
 
-        # draw red down regulating edges
-        nx.draw_networkx_edges(g, pos, edgelist=down_regulating_edges.keys(), width=3, alpha=edge_alpha, edge_color='r')
-        nx.draw_networkx_edge_labels(g, pos, edge_labels=down_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
+        # add edge labels
+        if edge_labels is True:
+            nx.draw_networkx_edge_labels(g, pos, edge_labels=up_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
+            nx.draw_networkx_edge_labels(g, pos, edge_labels=down_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
 
         # draw node labels with gene numbers
         for node, node_type in node_labels.items():
@@ -939,7 +947,7 @@ class Cell:
             elif node == node_key[output_node] and output_node is not None:
                 node_labels[node] = 'OUTPUT' + '\n' + str(node)
             else:
-                node_labels[node] = node_type + '\n' + str(node)
+                node_labels[node] = str(node)
 
         nx.draw_networkx_labels(g, pos, labels=node_labels, font_size=node_text_size, fontweight='bold', color='k', ha='center')
 
@@ -962,6 +970,14 @@ class Cell:
                 U = (x_product - x_substrate)/2 + x_substrate - x_enzyme
                 V = (y_product - y_substrate)/2 + y_substrate - y_enzyme
                 ax.arrow(x, y, U, V, length_includes_head=True, head_length=0.05, head_width=0.025, fc='g', ec='g', linewidth=3)
+
+        # add legend
+        cyan_patch = mpatches.Patch(color='c', label='protein coding gene')
+        magenta_patch = mpatches.Patch(color='m', label='modified protein')
+        blue_patch = mpatches.Patch(color='b', label='miRNA')
+        green_line = mlines.Line2D([], [], color='g', linewidth=5, label='Upregulation')
+        red_line = mlines.Line2D([], [], color='r', linewidth=5, label='Downregulation')
+        legend = ax.legend(handles=[cyan_patch, magenta_patch, blue_patch, green_line, red_line], loc=2, prop={'size': 16})
 
         if retall is True:
             return ax

@@ -1,6 +1,5 @@
 __author__ = 'Sebi'
 
-from modules.cells import *
 from modules.pareto import *
 from modules.fitness import *
 from modules.analysis import *

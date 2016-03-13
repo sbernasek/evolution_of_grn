@@ -1,6 +1,10 @@
 __author__ = 'Sebi'
 
 
+# set plateau count and duration for input signal in adaptation test
+plateau_count = 10
+plateau_duration = 50
+
 # define probabilities for whether mutation involves a node, an edge, or a rate constant
 mutation_type_probabilities = [0.2, 0.5, 0.3]
 
@@ -16,7 +20,7 @@ MODIFICATION_RATE_CONSTANT = 0.1
 CATALYTIC_MODIFICATION_RATE_CONSTANT = 0.1
 
 # iffy
-basal_transcription_rate = 0.1
+basal_transcription_rate = 0.0
 dna_binding_affinity = 1e2
 hill_coefficient = 1
 
