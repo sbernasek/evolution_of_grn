@@ -111,7 +111,6 @@ def run_simulation(directory=None, generations=10, population_size=20, mutations
 
     # iterate through selection+growth cycles
     for gen in range(0, generations):
-        start = time.time()
 
         # encourage extra mutations in initial population
         if gen == 0:
@@ -175,10 +174,6 @@ def run_simulation(directory=None, generations=10, population_size=20, mutations
         # if directory was specified, write current population with corresponding scores to json
         with open(new_path + '/' + str(gen) + '.json', mode='w', encoding='utf-8') as f:
             json.dump(current_generation, f)
-
-        # display time to complete current generation
-        stop = time.time()
-        # print('Generation %d took %4.2f seconds' % (gen, stop-start))
 
 def plot_1D_trajectory(populations, obj=0):
     """
