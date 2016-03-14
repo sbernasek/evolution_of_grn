@@ -8,12 +8,20 @@ import os
 
 
 """
+
+add note about expectation w/ more simulations for figure 5
+add evolutionary algorithm flow chart
+add equation used to calculate robustness score
+
+
 TO DO:
-    1. write robustness test (error free?)
-    2. normalize by area in performance metric
-    2. make graphics for paper and video
-    3. write paper
-    4. write outer wrapper for file saving, if sim fails delete file
+    1. write outer wrapper for file saving, if sim fails delete file
+    2. change to ATP consumption rate
+    3. try using optimizer to sole for steady state and see whether bifurcation occurs.. maybe avoid running non-adaptive sims
+    4. constrain mutations to connected graph
+    5. stop running rate calcs for energy usage calculations
+    6. clean up analysis code.. comments, tick marks, etc
+    7. write master plot formatter in plotting.py
 """
 
 
@@ -175,111 +183,3 @@ def run_simulation(directory=None, generations=10, population_size=20, mutations
         with open(new_path + '/' + str(gen) + '.json', mode='w', encoding='utf-8') as f:
             json.dump(current_generation, f)
 
-def plot_1D_trajectory(populations, obj=0):
-    """
-    Plots evolutionary trajectory of a specified objective function with generation.
-
-    Parameters:
-        populations (dict) - dictionary of all cells selected throughout procedure. keys are generation numbers, while
-        values are dictionaries of (cell: scores) entries.
-
-    Returns:
-        ax (axes object)
-    """
-
-    # convert to (gen: scores) form
-    score_evolution = {gen: list(score_dict.values()) for gen, score_dict in populations.items()}
-
-    # create axes
-    ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-
-    max_x = 1
-    for gen, scores in score_evolution.items():
-
-        # plot all coordinates in generation
-        coordinates = [coordinate for coordinate in zip(*scores)]
-        x = coordinates[obj]
-        ax.plot([gen for _ in x], x, '.b', markersize=10)
-
-        # update maximum for plot axis scaling
-        max_x = max(x + (max_x,))
-
-    # format plot
-    ax.set_xlim(0, len(score_evolution)+1)
-    ax.set_ylim(0, 1.2*max_x)
-    ax.set_xlabel('Generation', fontsize=16)
-    ax.set_ylabel('Objective %d' % obj, fontsize=16)
-    ax.set_title('Evolutionary Trajectory', fontsize=16)
-    return ax
-
-
-def plot_2D_trajectory(populations, obj=None, connect_front=False, labels=None):
-    """
-    Plots evolutionary trajectory of two specified objective functions in objective-space.
-
-    Parameters:
-        populations (dict) - dictionary of all cells selected throughout procedure. keys are generation numbers, while
-        values are dictionaries of (cell: scores) entries.
-        obj (tup) - tuple of indices of objective-coordinates to be visualized
-        connect_front (bool) - if True, draw line connecting pareto front
-        labels (list) - list of string labels for objective function names
-
-    Returns:
-        ax (axes object)
-    """
-
-    # convert to (gen: scores) form
-    score_evolution = {gen: list(score_dict.values()) for gen, score_dict in populations.items()}
-
-    # check that objective space has at least two dimensions
-    dim = len(score_evolution[0][0])
-    if dim < 2:
-        print('Error: Objective space only has %d dimension(s).' % dim)
-        return
-
-    # create axes
-    ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
-
-    # if objective space is two dimensional, plot points on objective-space plane
-    min_x, max_x = 1e3, 1e-3
-    min_y, max_y = 1e10, 1e-10
-    for gen, scores in score_evolution.items():
-
-        # plot all points in generation
-        coordinates = [coordinate for coordinate in zip(*scores)]
-        x, y = coordinates[obj[0]], coordinates[obj[1]]
-
-        color = [gen/len(score_evolution), 0/256, 0/256]
-        ax.plot(x, y, '.', markersize=25, color=color)
-
-        if connect_front is True and gen == list(populations.keys())[-1]:
-            y, x = zip(*sorted(zip(y, x), reverse=True))
-            ax.plot(x, y, '-', linewidth=5, color=color, zorder=0)
-
-        # update minima/maxima for plot axis scaling
-        min_x, min_y = min(x + (min_x,)), min(y + (min_y,))
-        max_x, max_y = max(x + (max_x,)), max(y + (max_y,))
-
-    # format plot
-    ax.set_xlim(0.75*min_x, 1.25*max_x)
-    ax.set_ylim(0.75*min_y, 1.25*max_y)
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_title('Evolutionary Trajectory', fontsize=16)
-
-    if labels is None:
-        ax.set_xlabel('Objective %d' % obj[0], fontsize=16)
-        ax.set_ylabel('Objective %d' % obj[1], fontsize=16)
-    else:
-        ax.set_xlabel(labels[0], fontsize=16)
-        ax.set_ylabel(labels[1], fontsize=16)
-
-    # plot artists
-    ax.plot([], '.k', markersize=25, label='First Generation')
-    ax.plot([], '.', markersize=25, color=[0.5, 0, 0], label='Middle Generation')
-    ax.plot([], '.r', markersize=25, label='Last Generation')
-    if connect_front is True:
-        ax.plot([], '-r', linewidth=5, label='Pareto Front')
-    ax.legend(loc=0)
-
-    return ax

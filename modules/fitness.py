@@ -99,32 +99,40 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
         else:
             ax0, ax1, ax2 = ax
 
+        # set fontsize for axis labels
+        font_size = 22
+
         # plot driving disturbance signal (need to change this)
         t, levels = [i for i in zip(*input_signal)]
         ax0.step(t, levels, '-b', where='post', linewidth=3)
         ax0.set_ylim(0, max(levels)+1)
-        ax0.set_ylabel('Input Signal', fontsize=16)
-        ax0.set_xlabel('Time (min)', fontsize=16)
+        ax0.set_ylabel('Input Signal', fontsize=font_size, fontweight='bold')
+        ax0.set_xlabel('Time (min)', fontsize=font_size, fontweight='bold')
 
         # plot normalized output level
 
         ax1.plot(times, output/output_steady_state, '-b', label='Normalized Output', linewidth=3)
         ax1.fill_between(times, np.ones((len(times))), output/output_steady_state, color='blue', alpha=0.5)
-        ax1.set_ylim(0, 1.1*np.max(output/output_steady_state))
+        ax1.set_ylim(0.9*np.min(output/output_steady_state), 1.1*np.max(output/output_steady_state))
         ax1.set_xlim(0, times[-1])
-        ax1.set_xlabel('Time (min)', fontsize=16)
-        ax1.set_ylabel('Output Relative to Steady State', fontsize=16)
+        ax1.set_xlabel('Time (min)', fontsize=font_size, fontweight='bold')
+        ax1.set_ylabel('Output / Steady State', fontsize=font_size, fontweight='bold')
 
         # get cumulative relative error at each point
         cumulative_errors = scipy.integrate.cumtrapz(abs(output/output_steady_state - 1), x=times) / times[1:]
 
         # plot cumulative error
-        ax2.set_ylabel('Adaptation Score', fontsize=16)
-        ax2.set_xlabel('Time (min)', fontsize=16)
+        ax2.set_ylabel('Adaptation Score', fontsize=font_size, fontweight='bold')
+        ax2.set_xlabel('Time (min)', fontsize=font_size, fontweight='bold')
         ax2.plot(times[1:], cumulative_errors, '-r', linewidth=3)
         ax2.plot(times[-1], cumulative_errors[-1], '.r', markersize=25)
         ax2.set_xlim(0, times[-1]+10)
         ax2.set_ylim(0, 1.2*max(cumulative_errors))
+
+        # format plots
+        ax0.tick_params(labelsize=18)
+        ax1.tick_params(labelsize=18)
+        ax2.tick_params(labelsize=18)
 
     score = [performance, energy]
 

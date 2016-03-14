@@ -925,10 +925,14 @@ class Cell:
         # are keys and values are edge_type strings
         up_regulating_edges, down_regulating_edges = {}, {}
         for edge in edge_list:
-            if edge[2] in ['activation', 'modification', 'catalytic_modification']:
-                up_regulating_edges[(edge[0], edge[1])] = edge[2]
-            else:
-                down_regulating_edges[(edge[0], edge[1])] = edge[2]
+
+            # TEMP: DONT SHOW EDGES AFFECTING INPUT
+            if edge[1] != node_key[input_node] or edge[2] not in ['activation', 'repression']:
+
+                if edge[2] in ['activation', 'modification', 'catalytic_modification']:
+                    up_regulating_edges[(edge[0], edge[1])] = edge[2]
+                else:
+                    down_regulating_edges[(edge[0], edge[1])] = edge[2]
 
         # draw green upregulating and red downregulating edges
         nx.draw_networkx_edges(g, pos, edgelist=up_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='g')
@@ -1276,13 +1280,14 @@ class Cell:
         else:
             return False
 
-    def show_reactions(self, interactions_only=True, grn_indices=False):
+    def show_reactions(self, interactions_only=True, grn_indices=False, input_node=None):
         """
         Pretty-print table of all reactions within the cell.
 
         Parameters:
             interactions_only (bool) - if True, only include interactions between different genes and proteins
             grn_indices (bool) - if True, display reactants and products in terms of their gene numbers
+            input_node (int) - index of input node, used to exclude input transcriptional regulation from table
         """
 
         # if grn_indices is True, get model to grn key
@@ -1325,9 +1330,13 @@ class Cell:
             if grn_indices is True:
                 tf = key[tf]
                 target = key[target]
+                input_node = key[input_node]
 
             # append reaction to table
-            mod_table.append([mod.mod_type, target, tf])
+
+            # TEMP: if mod target is input, skip
+            if target != input_node:
+                mod_table.append([mod.mod_type, target, tf])
 
         # print tables
         print(tabulate(rxn_table, headers=["Reaction Type", "Reactants", "Enzymes", "Products"]))
