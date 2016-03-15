@@ -5,19 +5,19 @@ from modules.plotting import *
 import numpy as np
 import glob as glob
 import json as json
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
+
 
 def load_results_from_json(file_path):
     """
-    Reads all json files within the specified path and returns a single results dictionary in which keys are generation
-    numbers and values are nested dictionaries in which keys are selected cell objects and values are a list of scores.
+    Reads all json files within the specified directory and returns a single results dictionary in which keys are
+    generation numbers and values are nested dictionaries in which keys are selected cell objects and values are a list
+    of scores.
 
     Parameters:
         file_path (str) - directory in which json files reside
 
     Returns:
-        results (dict) - dictionary in which keys are generations, values are dictionaries with cell, scores pairs
+        results (dict) - dictionary in which keys are generations, values are dictionaries with cell: scores pairs
     """
 
     # get all json files in results folder
@@ -40,9 +40,23 @@ def load_results_from_json(file_path):
 
     return results
 
+
 def plot_pareto_front_size(results):
-    ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
+    """
+    Plots size of Pareto front at each generation.
+
+    Parameters:
+        results (dict) - dictionary in which keys are generations, values are dictionaries with cell: scores pairs
+
+    Returns:
+        ax (axes object)
+    """
+
+    # get the number of selected cells at each generation
     num_selected_cells = [len(val) for val in results.values()]
+
+    # plot result
+    ax = create_subplot_figure(dim=(1, 1), size=(8, 6))[0]
     ax.plot(list(results.keys()), num_selected_cells, '-b', linewidth=3)
     ax.set_ylim(0, max(num_selected_cells)+2)
     ax.set_xlabel('Generation', fontsize=16, fontweight='bold')
@@ -51,26 +65,42 @@ def plot_pareto_front_size(results):
     ax.xaxis.grid(False), ax.yaxis.grid(False)
     return ax
 
-def get_ordered_front(results):
 
-    unordered_front = list(results.values())[-1]
+def get_ordered_front(results, gen=-1):
+    """
+    Plots size of Pareto front at each generation.
 
-    cells = unordered_front.keys() # list of unordered cells
-    scores = unordered_front.values() # corresponding list of lists of scores
+    Parameters:
+        results (dict) - dictionary in which keys are generations, values are dictionaries with cell: scores pairs
+        gen (int) - generation from which to pull cells and scores
+    Returns:
+        cells (tup) - ordered cell objects from Pareto front of specified generation
+        scores (tup) - ordered scores from Pareto front of specified generation
+    """
+
+    # get list of unordered cells along with corresponding scores
+    unordered_front = list(results.values())[gen]
+    cells = unordered_front.keys()
+    scores = unordered_front.values()
 
     # sort score and cell lists from left to right on first objective function axis
-
     scores, cells = zip(*sorted(zip(scores, cells), key=lambda x: x[0]))
-
 
     return cells, scores
 
+
 def plot_pareto_objective_tradeoff(metrics, metric_names=['Objective 1', 'Objective 2'], plot_title=None):
     """
-    Create bar plot of metric as a function of order along the pareto front.
+    Plots two objective function values on twin axes as a function of order along the pareto front.
 
     Parameters:
         metrics (list) - list of lists of metric values ordered by position on pareto front
+        metric_names (list) - list of names of each metric used to label plot axes
+        plot_title (str) - title for plot
+
+    Returns:
+        ax1 (axes object) - axis with first objective score
+        ax2 (axes object) - axis with second objective score
     """
 
     # create axes
@@ -97,13 +127,11 @@ def plot_pareto_objective_tradeoff(metrics, metric_names=['Objective 1', 'Object
         tick_labels[i] = ''
     tick_labels[3] = 'Most Robust'
     tick_labels[-4] = 'Most Efficient'
-
     ax1.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
         bottom='off',      # ticks along the bottom edge are off
         top='off')         # ticks along the top edge are off
-
     ax1.set_xlim(0, len(tick_labels)+1)
     ax1.set_xticklabels(tick_labels, fontsize=16, fontweight='bold', ha='center')
     ax1.set_xlabel('Selected Cells', fontsize=20)
@@ -121,12 +149,18 @@ def plot_pareto_objective_tradeoff(metrics, metric_names=['Objective 1', 'Object
 
     return ax1, ax2
 
+
 def plot_metric(metric, metric_name='Metric', plot_title=None):
     """
-    Create bar plot of metric as a function of order along the pareto front.
+    Create bar plot of a single metric as a function of order along the pareto front.
 
     Parameters:
         metric (list) - list of metric values ordered by position on pareto front
+        metric_name (str) - name of metric used to label y-axis
+        plot_title (str) - optional plot title
+
+    Returns:
+        ax (axes object)
     """
 
     # create axes
@@ -167,18 +201,80 @@ def plot_metric(metric, metric_name='Metric', plot_title=None):
 
     return ax
 
+
+def plot_multiple_metrics(ax, metric, metric_name='Metric', include_axis_label=False):
+    """
+    Adds bar plot of a metric as a function of order along the pareto front to an existing axes object (e.g. subplot).
+
+    Parameters:
+        ax (axes object) - existing axes object
+        metric (list) - list of metric values ordered by position on pareto front
+        metric_name (str) - name of metric used to label y-axis
+        include_axis_labels (bool) - if False, no axis labels are included
+    """
+
+    # generate rank numbers
+    ranks = np.arange(1, len(metric)+1)
+
+    # create bar plot, remove vertical grid and xtick marks
+    ax.bar(ranks, metric, align='center', alpha=0.5)
+    ax.xaxis.grid(False), ax.yaxis.grid(False)
+    ax.set_xlim(0, len(metric)+1)
+    plt.tick_params(axis='x', which='both', bottom='off', top='off')
+
+    # set y tick labels
+    if max(metric) > 3:
+        ax.yaxis.set_ticks(np.arange(0, np.ceil(max(metric))+1, int(max(metric)/3)))
+    else:
+        ax.yaxis.set_ticks(np.arange(0, np.ceil(max(metric))+1))
+
+    # set x tick labels as range from most robust to most efficient
+    if include_axis_label is True:
+        ax.set_xticks(ranks)
+        tick_labels = ax.get_xticks().tolist()
+        for i in range(0, len(tick_labels)):
+            tick_labels[i] = ''
+        tick_labels[3] = 'Most Robust'
+        tick_labels[-4] = 'Most Efficient'
+        ax.set_xticklabels(tick_labels, fontsize=16, fontweight='bold', ha='center')
+        ax.set_xlabel('Selected Cells', fontsize=20)
+    else:
+        ax.set_xticks([])
+
+    # format y axis
+    _ = [ytick.set_fontsize(16) for ytick in ax.get_yticklabels()]
+    ax.set_ylabel(metric_name, fontsize=12, fontweight='bold')
+    if max(metric) != 0:
+        ax.set_ylim(0, 1.2*max(metric))
+    else:
+        ax.set_ylim(0, 6)
+
+
 def get_topology_from_front(results):
     """
-    Returns dictionaries of topological metrics from the pareto front, ordered from highest robustness to highest efficiency.
+    Gets topological metrics ordered along the Pareto front.
+
+    Parameters:
+        results (dict) - dictionary in which keys are generations, values are dictionaries with cell: scores pairs
+
+    Returns:
+        objectives (dict) - objective function values, includes robustness and energy_usage
+        network_size (dict) - network size metrics, includes edge_count, node_count, and edges_per_gene
+        node_types (dict) - node type counts, includes genes, modified_proteins, and micro_rnas
+        edge_types (dict) - edge type counts, includes TR, TA, PTR, CD, M, and CM
     """
 
     # get ordered pareto front (cells ordered by first objective function score)
     cells, scores = get_ordered_front(results)
 
+    # initialize lists for objective functions
+    objectives = {
+        'robustness': [],
+        'energy_usage': []
+    }
+
     # initialize lists for network size distribution
     network_size = {
-        'robustness': [],
-        'energy_usage': [],
         'edge_count': [],
         'node_count': [],
         'edges_per_gene': []
@@ -210,8 +306,8 @@ def get_topology_from_front(results):
     for cell, score in zip(cells, scores):
 
         # get cell scores
-        network_size['robustness'].append(score[0])
-        network_size['energy_usage'].append(score[1])
+        objectives['robustness'].append(score[0])
+        objectives['energy_usage'].append(score[1])
 
         # get cell topology
         edges, nodes, key = cell.get_topology()
@@ -236,10 +332,10 @@ def get_topology_from_front(results):
         edge_types['M'].append(len([1 for edge in edges if edge[2] in ['modification']]))
         edge_types['CM'].append(len([1 for edge in edges if edge[2] in ['catalytic_modification']]))
 
-    return network_size, node_types, edge_types
+    return objectives, network_size, node_types, edge_types
 
 
-def plot_1D_trajectory(results, obj=0):
+def plot_1d_trajectory(results, obj=0):
     """
     Plots evolutionary trajectory of a specified objective function with generation.
 
@@ -277,7 +373,7 @@ def plot_1D_trajectory(results, obj=0):
     return ax
 
 
-def plot_2D_trajectory(results, obj=None, connect_front=False, labels=None):
+def plot_2d_trajectory(results, obj=None, connect_front=False, labels=None):
     """
     Plots evolutionary trajectory of two specified objective functions in objective-space.
 
@@ -336,6 +432,7 @@ def plot_2D_trajectory(results, obj=None, connect_front=False, labels=None):
     color_bar.set_label('Generation', fontsize=16, fontweight='bold')
     color_bar.set_alpha(1)
     color_bar.draw_all()
+    color_bar.set_ticks(np.arange(0, len(results), int(len(results)/10)))
     color_bar.ax.tick_params(labelsize=16)
 
     # format plot
@@ -362,43 +459,4 @@ def plot_2D_trajectory(results, obj=None, connect_front=False, labels=None):
     return ax
 
 
-def plot_multiple_metrics(ax, metric, metric_name='Metric', include_axis_label=False):
-    """
-    Create bar plot of metric as a function of order along the pareto front.
 
-    Parameters:
-        metric (list) - list of metric values ordered by position on pareto front
-    """
-
-    # generate rank numbers
-    ranks = np.arange(1, len(metric)+1)
-
-    # create bar plot, remove vertical grid and xtick marks
-    ax.bar(ranks, metric, align='center', alpha=0.5)
-    ax.xaxis.grid(False), ax.yaxis.grid(False)
-    ax.set_xlim(0, len(metric)+1)
-    plt.tick_params(axis='x', which='both', bottom='off', top='off')
-
-    # set y tick labels
-    if max(metric) > 3:
-        ax.yaxis.set_ticks(np.arange(0, np.ceil(max(metric))+1, int(max(metric)/3)))
-    else:
-        ax.yaxis.set_ticks(np.arange(0, np.ceil(max(metric))+1))
-
-    # set x tick labels as range from most robust to most efficient
-    if include_axis_label is True:
-        ax.set_xticks(ranks)
-        tick_labels = ax.get_xticks().tolist()
-        for i in range(0, len(tick_labels)):
-            tick_labels[i] = ''
-        tick_labels[3] = 'Most Robust'
-        tick_labels[-4] = 'Most Efficient'
-        ax.set_xticklabels(tick_labels, fontsize=16, fontweight='bold', ha='center')
-        ax.set_xlabel('Selected Cells', fontsize=20)
-    else:
-        ax.set_xticks([])
-
-    # edit y axis
-    _ = [ytick.set_fontsize(16) for ytick in ax.get_yticklabels()]
-    ax.set_ylabel(metric_name, fontsize=12, fontweight='bold')
-    ax.set_ylim(0, 1.2*max(metric))

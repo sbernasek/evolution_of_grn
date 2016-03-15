@@ -1287,8 +1287,12 @@ class Cell:
         Parameters:
             interactions_only (bool) - if True, only include interactions between different genes and proteins
             grn_indices (bool) - if True, display reactants and products in terms of their gene numbers
-            input_node (int) - index of input node, used to exclude input transcriptional regulation from table
+            input_node (int) - index of input node, used to exclude input transcriptional regulation from table. if None,
+            assume input goes to second gene
         """
+
+        if input_node is None:
+            input_node = 2
 
         # if grn_indices is True, get model to grn key
         if grn_indices is True:

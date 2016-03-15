@@ -9,8 +9,6 @@ import os
 
 """
 
-add note about expectation w/ more simulations for figure 5
-add evolutionary algorithm flow chart
 add equation used to calculate robustness score
 
 
