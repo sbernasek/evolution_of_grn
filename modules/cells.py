@@ -1177,7 +1177,7 @@ class Cell:
         else:
             return False
 
-    def show_reactions(self, interactions_only=True, grn_indices=False):
+    def show_reactions(self, interactions_only=True, grn_indices=True, show_inputs=True, output_node=None):
         """
         Pretty-print table of all reactions within the cell.
 
@@ -1185,11 +1185,27 @@ class Cell:
             interactions_only (bool) - if True, only include interactions between different genes and proteins
             grn_indices (bool) - if True, display reactants and products in terms of their gene numbers
             assume input goes to second gene
+            show_inputs (bool) - if True, inputs are marked as such
         """
 
         # if grn_indices is True, get model to grn key
         if grn_indices is True:
             _, _, key = self.get_topology()
+        else:
+            key = {node: node for node in self.input_nodes + self.permanent_genes + self.removable_genes + self.non_coding_rnas + self.proteins}
+
+        # replace input keys with 'INPUT'
+        if show_inputs is True:
+            for i, input_node in enumerate(self.input_nodes):
+                key[key[input_node]] = 'INPUT' # %d' % i
+
+        # replace output keys (and coding genes, if relevant) with 'OUTPUT'
+        if output_node is not None:
+            output_nodes = [output_node]
+            if output_node in set(self.proteins).difference(set(self.modified_proteins)):
+                output_nodes.append(output_node - 1)
+            for node in output_nodes:
+                key[node] = 'OUTPUT' # %d' % key[node]
 
         # create table of reactions
         rxn_table = []
@@ -1208,11 +1224,15 @@ class Cell:
                 enzymes = []
             products = rxn.products
 
-            # if grn_indices is True, store reactant/product list in terms of gene numbers, otherwise leave as is
-            if grn_indices is True:
-                reactants = [key[reactant] for reactant in reactants]
-                enzymes = [key[enzyme] for enzyme in enzymes]
-                products = [key[product] for product in products]
+            # apply key to reactants/products/enzymes, then strip brackets from list
+            reactants = [key[reactant] for reactant in reactants]
+            reactants = ", ".join(str(reactant) for reactant in reactants)
+
+            enzymes = [key[enzyme] for enzyme in enzymes]
+            enzymes = ", ".join(str(enzyme) for enzyme in enzymes)
+
+            products = [key[product] for product in products]
+            products = ", ".join(str(product) for product in products)
 
             # append reaction to table
             rxn_table.append([rxn.rxn_type, reactants, enzymes, products])
@@ -1220,21 +1240,16 @@ class Cell:
         # create table of transcriptional regulators
         mod_table = []
         for mod in self.rate_mods:
-            tf = mod.substrate
-            target = mod.target
-
-            # if grn_indices is True, store reactant/product list in terms of gene numbers, otherwise leave as is
-            if grn_indices is True:
-                tf = key[tf]
-                target = key[target]
+            tf = key[mod.substrate]
+            target = key[mod.target]
 
             # append reaction to table
-            mod_table.append([mod.mod_type, target, tf])
+            mod_table.append([mod.mod_type, tf, target])
 
         # print tables
-        print(tabulate(rxn_table, headers=["Reaction Type", "Reactants", "Enzymes", "Products"]))
+        print(tabulate(rxn_table, headers=["Reaction Type", "Reactants", "Enzymes", "Products"], numalign='center', stralign='center'))
         print('\n')
-        print(tabulate(mod_table, headers=["Regulation Type", "Target Gene", "Transcription Factor"]))
+        print(tabulate(mod_table, headers=["Regulation Type", "Transcription Factor", "Target Gene"], numalign='center', stralign='center'))
 
     def get_topology(self):
         """
