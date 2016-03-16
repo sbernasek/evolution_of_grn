@@ -16,21 +16,20 @@ from modules.plotting import *
 warnings.filterwarnings('error')
 
 """
-NEED TO CHECK:
-    1. Input overrides input node's transcription rate... so regulation of input node doesn't do anything. Solution:
-    create a new permanent node class to represent input
+CHECK:
+    1. get_steady_state optimizer doesn't always seem to be correct
 
 TO DO:
-    1. add new types of input (i.e. direct protein level)
-    2. speed up ode solver... maybe cython?
-    3. add enzyme column to show_reactions()
+    1. stop calculating rates for energy usage
 
 Long term:
     1. dimerization + reverse
     2. time delays for regulation (nuclear translocation)
     3. split cell class into network structure and network dynamics classes
     4. compile linear reaction stoichiometries in advance so the get_rate function can be vectorized
-    5. why are we selecting such low protein levels?
+
+Notes:
+    1. input does not participate in catalytic degradation
 """
 
 
@@ -39,7 +38,7 @@ class Cell:
     Class defines a network of interacting species described by a system of stochastic ODEs.
     """
 
-    def __init__(self, name, removable_genes=0, permanent_genes=0, cell_type='prokaryote'):
+    def __init__(self, name, removable_genes=0, permanent_genes=0, input_nodes=0, cell_type='prokaryote'):
         """
         Parameters:
             name (int) - cell index
@@ -52,15 +51,19 @@ class Cell:
         self.cell_type = cell_type
         self.key = None
 
-        # initialize cell species
+        # initialize network dimension count
         self.species_count = 0  # this is the total number of unique chemical species in this cell's genetic lineage
         self.network_dimension = 0
-        self.coding_rnas = []
-        self.proteins = []
-        self.non_coding_rnas = []
-        self.modified_proteins = []
-        self.removable_genes = []
+
+        # initialize network species lists
+        self.input_nodes = []
         self.permanent_genes = []
+        self.removable_genes = []
+
+        self.coding_rnas = []
+        self.non_coding_rnas = []
+        self.proteins = []
+        self.modified_proteins = []
 
         # initialize cell reactions
         self.reactions = []
@@ -68,6 +71,10 @@ class Cell:
 
         # initialize stoichiometric matrix
         self.stoichiometry = None
+
+        # add input nodes to network
+        for _ in range(0, input_nodes):
+            self.add_input_node()
 
         # add permanent genes to network
         for _ in range(0, permanent_genes):
@@ -96,8 +103,10 @@ class Cell:
         cell.proteins = js['proteins']
         cell.non_coding_rnas = js['non_coding_rnas']
         cell.modified_proteins = js['modified_proteins']
-        cell.removable_genes = js['removable_genes']
+        cell.input_nodes = js['input_nodes']
         cell.permanent_genes = js['permanent_genes']
+        cell.removable_genes = js['removable_genes']
+
         cell.stoichiometry = np.array(js['stoichiometry'])
 
         # get attributes containing nested classes
@@ -118,8 +127,9 @@ class Cell:
             'proteins': self.proteins,
             'non_coding_rnas': self.non_coding_rnas,
             'modified_proteins': self.modified_proteins,
-            'removable_genes': self.removable_genes,
+            'input_nodes': self.input_nodes,
             'permanent_genes': self.permanent_genes,
+            'removable_genes': self.removable_genes,
             'stoichiometry': self.stoichiometry.tolist(),
 
             # return attributes containing nested classes
@@ -276,6 +286,20 @@ class Cell:
 
         # add modifier back to network
         self.rate_mods[index] = mod
+
+    def add_input_node(self):
+        """
+        Adds node with static input value to cell's internal network. These nodes may affect other nodes in the GRN, but
+        are not regulated by other nodes. They may not be deleted by mutation.
+
+        """
+
+        # get index for new species and increment species count
+        node = self.species_count
+        self.species_count += 1
+
+        # add new species to network
+        self.input_nodes.append(node)
 
     def add_coding_gene(self, removable=True):
         """
@@ -467,7 +491,7 @@ class Cell:
         """
 
         if tf is None:
-            tf = np.random.choice(self.proteins)
+            tf = np.random.choice(self.proteins + self.input_nodes)
             tf = int(tf)
         if gene is None:
             gene = np.random.choice(self.coding_rnas + self.non_coding_rnas)
@@ -495,7 +519,7 @@ class Cell:
         Add a post transcriptional regulatory interaction between a non-coding mRNA and another randomly chosen mRNA.
 
         Parameter:
-            targer (int) - index of target transcript
+            target (int) - index of target transcript
         """
 
         # select a non-coding rna
@@ -543,6 +567,8 @@ class Cell:
         """
         Randomly select two proteins and add a protein-protein catalytic degradation (partial degradation) reaction.
 
+        TODO: Note that input nodes are not current included.
+
         Parameters:
             degraded (int) - index of degraded protein
             enzyme (int) - index of catalytic protein that promotes degradation of p1
@@ -579,7 +605,7 @@ class Cell:
     def add_protein_modification(self, substrate=None, enzyme=None, product_specified=None, reversibility_bias=1):
         """
         Add a reaction in which a protein is converted to a new protein species. The reaction may or may not be
-        assisted by another protein.
+        catalyzed by another protein or input node.
 
         Parameters:
             substrate (int) - index of specific protein to be modified
@@ -654,7 +680,7 @@ class Cell:
 
                 # randomly choose one protein as an enzyme to catalyze modification of the substrate (exclude autocatalysis)
                 if enzyme is None:
-                    enzyme = np.random.choice([protein for protein in self.proteins if protein != substrate and protein != product])
+                    enzyme = np.random.choice([protein for protein in self.proteins if protein != substrate and protein != product] + self.input_nodes)
                     enzyme = int(enzyme)
 
                 # get rate constant and define reactants
@@ -775,216 +801,14 @@ class Cell:
 
     def reindex_nodes(self):
         """
-        Compile dictionary for reindexing all nodes into sequential order (genes, proteins, modified proteins) used in
-        states array.
+        Compile dictionary for reindexing all nodes into sequential order (inputs, genes, proteins, modified proteins)
+        to be used in states array.
 
         """
-        active_species = self.coding_rnas + self.non_coding_rnas + self.proteins
+        active_species = self.input_nodes + self.coding_rnas + self.non_coding_rnas + self.proteins
         self.network_dimension = len(active_species)
         reindexing_key = {old_index: new_index for new_index, old_index in enumerate(active_species)}
         self.key = reindexing_key
-
-    def get_topology(self):
-        """
-        Aggregates and returns gene regulatory network topology as an edge list.
-
-        Returns:
-            edge_list (list) -  gene regulatory network topology composed of (regulatory_gene, target_gene, regulation_type) tuples
-            node_labels (dict) - dictionary of node labels in which keys are new indices and values are node types
-            node_key (dict) - dictionary mapping old to new indices in which keys are old indices and values are new
-        """
-
-        # generate (node_from, node_to, edge_type) tuples
-        edge_list = []
-
-        # reindex species used as nodes in gene-regulatory topology
-        node_key, node_labels = {}, {}
-
-        # reindex permanent genes
-        for h, gene in enumerate(self.permanent_genes):
-            node_key[gene] = h
-            node_labels[h] = 'permanent gene'
-            # find and add corresponding protein to same index
-            for rxn in self.reactions:
-                if rxn.rxn_type == 'translation' and rxn.reactants[0] == gene:
-                    node_key[rxn.products[0]] = h
-
-        # reindex removable genes
-        for i, gene in enumerate(self.removable_genes):
-            node_key[gene] = len(self.permanent_genes) + i
-            node_labels[len(self.permanent_genes) + i] = 'removable gene'
-            # find and add corresponding protein to same index
-            for rxn in self.reactions:
-                if rxn.rxn_type == 'translation' and rxn.reactants[0] == gene:
-                    node_key[rxn.products[0]] = len(self.permanent_genes) + i
-
-        # reindex unique non-coding-rnas
-        for j, gene in enumerate(self.non_coding_rnas):
-            node_key[gene] = len(self.permanent_genes) + len(self.removable_genes) + j
-            node_labels[node_key[gene]] = 'non-coding gene'
-
-        # reindex modified proteins
-        for k, protein in enumerate(self.modified_proteins):
-            node_key[protein] = len(self.permanent_genes) + len(self.removable_genes) + len(self.non_coding_rnas) + k
-            node_labels[node_key[protein]] = 'modified protein'
-
-        # get transcriptional regulation edges
-        for mod in self.rate_mods:
-            edge = (node_key[mod.substrate], node_key[mod.target], mod.mod_type)
-            edge_list.append(edge)
-
-        # get other regulatory edges
-        for rxn in self.reactions:
-            if rxn.rxn_type == 'miRNA_silencing':
-                edge = (node_key[rxn.reactants[0]], node_key[rxn.reactants[1]], rxn.rxn_type)
-                edge_list.append(edge)
-            if rxn.rxn_type == 'catalytic_degradation':
-                edge = (node_key[rxn.reactants[1]], node_key[rxn.reactants[0]], rxn.rxn_type)
-                edge_list.append(edge)
-            if rxn.rxn_type == 'modification':
-                edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type)
-                edge_list.append(edge)
-            if rxn.rxn_type == 'catalytic_modification':
-                edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type) # ignore enzyme for visualization
-                edge_list.append(edge)
-
-        return edge_list, node_labels, node_key
-
-    def show_topology(self, graph_layout='shell', input_node=None, output_node=None, edge_labels=False, retall=False):
-        """
-        Generates networkx visualization of network topology.
-
-        Parameters:
-            graph_layout (string) - method used to arrange network nodes in space
-            input_node (int) - index of node to which input signal is sent
-            output_node (int) - index of node from which output is retrieved
-            edge_labels (bool) - if True, label edges with interaction type
-            retall (bool) - if True, return axes
-        """
-
-        # get network topology
-        edge_list, node_labels, node_key = self.get_topology()
-        node_key[None] = None
-
-        if len(edge_list) == 0:
-            print('Network has no edges.')
-            return
-
-        # display options
-        node_size = 12000
-        node_alpha = 1
-        node_text_size = 24
-        edge_alpha = 0.5
-        edge_text_pos = 0.4
-
-        # create networkx graph
-        plt.figure()
-        g = nx.DiGraph()
-
-        # add nodes
-        for node, node_type in node_labels.items():
-            g.add_node(node, attr_dict={'node_type': node_type})
-
-        # add edges
-        for edge in edge_list:
-            g.add_edge(edge[0], edge[1])
-
-        # select graph layout scheme
-        if graph_layout == 'spring':
-            pos = nx.spring_layout(g)
-        elif graph_layout == 'spectral':
-            pos = nx.spectral_layout(g)
-        elif graph_layout == 'random':
-            pos = nx.random_layout(g)
-        else:
-            pos = nx.shell_layout(g)
-
-        # sort nodes into four types (different colors on graph)
-        permanent_genes = [node for node, node_type in node_labels.items() if node_type == 'permanent gene']
-        removable_genes = [node for node, node_type in node_labels.items() if node_type == 'removable gene']
-        non_coding_genes = [node for node, node_type in node_labels.items() if node_type == 'non-coding gene']
-        modified_proteins = [node for node, node_type in node_labels.items() if node_type == 'modified protein']
-
-        # draw cyan permanent genes
-        if len(permanent_genes) > 0:
-            nx.draw_networkx_nodes(g, pos, nodelist=permanent_genes, node_color='c', node_size=node_size, alpha=node_alpha)
-
-        # draw cyan coding genes
-        if len(removable_genes) > 0:
-            nx.draw_networkx_nodes(g, pos, nodelist=removable_genes, node_color='c', node_size=node_size, alpha=node_alpha)
-
-        # draw blue non-coding genes (miRNAs)
-        if len(non_coding_genes) > 0:
-            nx.draw_networkx_nodes(g, pos, nodelist=non_coding_genes, node_color='b', node_size=node_size, alpha=node_alpha)
-
-        # draw magenta modified proteins
-        if len(modified_proteins) > 0:
-            nx.draw_networkx_nodes(g, pos, nodelist=modified_proteins, node_color='m', node_size=node_size, alpha=node_alpha)
-
-        # sort edge_list into dictionaries of up-regulating and down-regulating interactions, where (from, to) tuples
-        # are keys and values are edge_type strings
-        up_regulating_edges, down_regulating_edges = {}, {}
-        for edge in edge_list:
-
-            # TEMP: DONT SHOW EDGES AFFECTING INPUT
-            if edge[1] != node_key[input_node] or edge[2] not in ['activation', 'repression']:
-
-                if edge[2] in ['activation', 'modification', 'catalytic_modification']:
-                    up_regulating_edges[(edge[0], edge[1])] = edge[2]
-                else:
-                    down_regulating_edges[(edge[0], edge[1])] = edge[2]
-
-        # draw green upregulating and red downregulating edges
-        nx.draw_networkx_edges(g, pos, edgelist=up_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='g')
-        nx.draw_networkx_edges(g, pos, edgelist=down_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='r')
-
-        # add edge labels
-        if edge_labels is True:
-            nx.draw_networkx_edge_labels(g, pos, edge_labels=up_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
-            nx.draw_networkx_edge_labels(g, pos, edge_labels=down_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
-
-        # draw node labels with gene numbers
-        for node, node_type in node_labels.items():
-
-            if node == node_key[input_node] and input_node is not None:
-                node_labels[node] = 'INPUT' + '\n' + str(node)
-            elif node == node_key[output_node] and output_node is not None:
-                node_labels[node] = 'OUTPUT' + '\n' + str(node)
-            else:
-                node_labels[node] = str(node)
-
-        nx.draw_networkx_labels(g, pos, labels=node_labels, font_size=node_text_size, fontweight='bold', color='k', ha='center')
-
-        # get current figure and axes
-        fig = plt.gcf()
-        fig.set_size_inches(15, 15)
-        _ = plt.axis('off')
-        ax = plt.gca()
-
-        # add all catalytic interactions
-        for rxn in self.reactions:
-            if rxn.rxn_type == 'catalytic_modification':
-
-                x_substrate, y_substrate = pos[node_key[rxn.reactants[0]]]
-                x_enzyme, y_enzyme = pos[node_key[rxn.reactants[1]]]
-                x_product, y_product = pos[node_key[rxn.products[0]]]
-
-                x = x_enzyme
-                y = y_enzyme
-                U = (x_product - x_substrate)/2 + x_substrate - x_enzyme
-                V = (y_product - y_substrate)/2 + y_substrate - y_enzyme
-                ax.arrow(x, y, U, V, length_includes_head=True, head_length=0.05, head_width=0.025, fc='g', ec='g', linewidth=3)
-
-        # add legend
-        cyan_patch = mpatches.Patch(color='c', label='protein coding gene')
-        magenta_patch = mpatches.Patch(color='m', label='modified protein')
-        blue_patch = mpatches.Patch(color='b', label='miRNA')
-        green_line = mlines.Line2D([], [], color='g', linewidth=5, label='Upregulation')
-        red_line = mlines.Line2D([], [], color='r', linewidth=5, label='Downregulation')
-        legend = ax.legend(handles=[cyan_patch, magenta_patch, blue_patch, green_line, red_line], loc=2, prop={'size': 16})
-
-        if retall is True:
-            return ax
 
     def simulate(self, input_signal, input_node=0, ic=None, solve_if_stiff=True):
         """
@@ -992,7 +816,7 @@ class Cell:
 
         Parameters:
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of mRNA whose transcription rate is impacted by input signal
+            input_node (int) - index of input_node whose level is set by input_signal
             ic (np array) - vector of initial conditions for each species, assumed zero if omitted
             solve_if_stiff (bool) - if True, when dopri5 solver fails, revert to VODE (slow, but handles stiff ODEs)
 
@@ -1061,7 +885,7 @@ class Cell:
             t (float) - current time
             state (np array) - array of current state values
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of gene to which activation signal is sent
+            input_node (int) - index of input node whose level is set by input_signal
 
         Returns:
             species_rates (np array) - net rate of change of each species (N x 1)
@@ -1080,27 +904,27 @@ class Cell:
             t (float) - current time
             state (np array) - array of current state values
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of mRNA whose transcription rate is impacted by input signal
+            input_node (int) - index of input node whose level is set by input_signal
 
         Returns:
             rxn_rates (np array) - rate of each reaction (M x 1)
         """
 
-        # compute current reactions rates
-        rxn_rates = self.get_rate_vector(state)
-
-        # determine current input value
+        # override input states with input signal values
         if input_signal is not None:
+
+            # determine current input value
             for time, magnitude in input_signal:
                 if t >= time:
                     current_input = magnitude
                 else:
                     break
 
-            # apply input as activation of target gene
-            disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
-                             if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
-            rxn_rates[disturbed_rxn[0]] = current_input
+            # set input value in state vector
+            state[input_node] = current_input
+
+        # compute current reactions rates
+        rxn_rates = self.get_rate_vector(state)
 
         return rxn_rates
 
@@ -1115,7 +939,7 @@ class Cell:
             times (np array) - time points corresponding to state values (1 by t)
             states (np array) - matrix of state values at each time point (N by t)
             input_signal (list) - values for input signal, supplied as a list of (start_time, input_magnitude) tuples
-            input_node (int) - index of mRNA whose transcription rate is impacted by input signal
+            input_node (int) - index of input node whose level is set by input_signal
             atp_per_rxn (list) - list of atp requirements per unit flux through each reaction pathway (M x 1)
 
         Returns:
@@ -1135,7 +959,7 @@ class Cell:
 
         return energy_usage
 
-    def get_steady_states(self, input_node=None, input_magnitude=1, ic=None):
+    def get_steady_states(self, input_node=None, input_magnitude=0, ic=None):
         """
         Computes steady state of system from specified initial condition.
 
@@ -1164,6 +988,32 @@ class Cell:
                 initial_states += 50
 
         return steady_states
+
+    def get_ss_species_rates(self, states, input_node, input_magnitude):
+        """
+        Computes net rate of change of each chemical species. This serves as the "derivative" function for the steady
+         state solver.
+
+        Parameters:
+            states (np array) - array of current state values
+            input_node (int) - index of node to which input signal is sent
+            input_signal (float) - magnitude of input signal
+
+        Returns:
+            species_rates (np array) - net rate of change of each species (N x 1)
+        """
+
+        # set input value in state vector
+        if input_node is not None:
+            states[input_node] = input_magnitude
+
+        # compute current reactions rates
+        rxn_rates = self.get_rate_vector(states)
+
+        # compute species rates
+        species_rates = np.dot(self.stoichiometry, rxn_rates)
+
+        return species_rates
 
     def plot_steady_states(self, input_node=None, input_magnitude=1, output_node=None, ic=None):
         """
@@ -1195,35 +1045,7 @@ class Cell:
             ax.set_ylabel('Output Level', fontsize=16)
             ax.set_title('Steady State Test', fontsize=16)
 
-    def get_ss_species_rates(self, states, input_node, input_magnitude):
-        """
-        Computes net rate of change of each chemical species. This serves as the "derivative" function for the steady
-         state solver.
-
-        Parameters:
-            states (np array) - array of current state values
-            input_node (int) - index of node to which input signal is sent
-            input_signal (float) - magnitude of input signal
-
-        Returns:
-            species_rates (np array) - net rate of change of each species (N x 1)
-        """
-
-        # compute current reactions rates
-        rxn_rates = self.get_rate_vector(states)
-
-        # apply input signal as activation of target gene
-        if input_node is not None and input_magnitude is not None:
-            disturbed_rxn = [j for j, rxn in enumerate(self.reactions)
-                             if rxn.rxn_type == 'transcription' and rxn.products[0] == input_node]
-            rxn_rates[disturbed_rxn[0]] = input_magnitude
-
-        # compute species rates
-        species_rates = np.dot(self.stoichiometry, rxn_rates)
-
-        return species_rates
-
-    def interaction_check_numerical(self, input_node, output_node, steady_states=None, plot=False):
+    def interaction_check_numerical(self, input_node, output_node, tol=1e-3, steady_states=None, plot=False):
         """
         Determines whether input influences output by checking whether output deviates from steady state upon step
         change to input.
@@ -1231,6 +1053,7 @@ class Cell:
         Parameters:
             input_node (int) - input node index
             output_node (int) - output node index
+            tol (float) - threshold for percent change in output used to decide whether input and output are connected
             steady_states (np array) - array of steady state values to be used as initial conditions
             plot (bool) - if True, plot procedure
 
@@ -1275,24 +1098,20 @@ class Cell:
             ax.set_ylabel('Output Level', fontsize=16)
             ax.set_title('Interaction Test', fontsize=16)
 
-        if max_deviation > 0.01:
+        if max_deviation > tol:
             return True
         else:
             return False
 
-    def show_reactions(self, interactions_only=True, grn_indices=False, input_node=None):
+    def show_reactions(self, interactions_only=True, grn_indices=False):
         """
         Pretty-print table of all reactions within the cell.
 
         Parameters:
             interactions_only (bool) - if True, only include interactions between different genes and proteins
             grn_indices (bool) - if True, display reactants and products in terms of their gene numbers
-            input_node (int) - index of input node, used to exclude input transcriptional regulation from table. if None,
             assume input goes to second gene
         """
-
-        if input_node is None:
-            input_node = 2
 
         # if grn_indices is True, get model to grn key
         if grn_indices is True:
@@ -1334,15 +1153,242 @@ class Cell:
             if grn_indices is True:
                 tf = key[tf]
                 target = key[target]
-                input_node = key[input_node]
 
             # append reaction to table
-
-            # TEMP: if mod target is input, skip
-            if target != input_node:
-                mod_table.append([mod.mod_type, target, tf])
+            mod_table.append([mod.mod_type, target, tf])
 
         # print tables
         print(tabulate(rxn_table, headers=["Reaction Type", "Reactants", "Enzymes", "Products"]))
         print('\n')
         print(tabulate(mod_table, headers=["Regulation Type", "Target Gene", "Transcription Factor"]))
+
+    def get_topology(self):
+        """
+        Aggregates and returns gene regulatory network topology as an edge list.
+
+        Returns:
+            edge_list (list) -  gene regulatory network topology composed of (regulatory_gene, target_gene, regulation_type) tuples
+            node_labels (dict) - dictionary of node labels in which keys are new indices and values are node types
+            node_key (dict) - dictionary mapping old to new indices in which keys are old indices and values are new
+        """
+
+        # generate (node_from, node_to, edge_type) tuples
+        edge_list = []
+
+        # reindex species used as nodes in gene-regulatory topology
+        node_key, node_labels = {}, {}
+
+        node_count = 0
+
+        # reindex input nodes
+        for input_node in self.input_nodes:
+            node_key[input_node] = node_count
+            node_labels[node_count] = 'input node'
+            node_count += 1
+
+        # reindex permanent genes
+        for gene in self.permanent_genes:
+            node_key[gene] = node_count
+            node_labels[node_count] = 'permanent gene'
+            # find and add corresponding protein to same index
+            for rxn in self.reactions:
+                if rxn.rxn_type == 'translation' and rxn.reactants[0] == gene:
+                    node_key[rxn.products[0]] = node_count
+            node_count += 1
+
+        # reindex removable genes
+        for gene in self.removable_genes:
+            node_key[gene] = node_count
+            node_labels[node_count] = 'removable gene'
+            # find and add corresponding protein to same index
+            for rxn in self.reactions:
+                if rxn.rxn_type == 'translation' and rxn.reactants[0] == gene:
+                    node_key[rxn.products[0]] = node_count
+            node_count += 1
+
+        # reindex unique non-coding-rnas
+        for gene in self.non_coding_rnas:
+            node_key[gene] = node_count
+            node_labels[node_key[gene]] = 'non-coding gene'
+            node_count += 1
+
+        # reindex modified proteins
+        for protein in self.modified_proteins:
+            node_key[protein] = node_count
+            node_labels[node_key[protein]] = 'modified protein'
+            node_count += 1
+
+        # get transcriptional regulation edges
+        for mod in self.rate_mods:
+            edge = (node_key[mod.substrate], node_key[mod.target], mod.mod_type)
+            edge_list.append(edge)
+
+        # get other regulatory edges
+        for rxn in self.reactions:
+            if rxn.rxn_type == 'miRNA_silencing':
+                edge = (node_key[rxn.reactants[0]], node_key[rxn.reactants[1]], rxn.rxn_type)
+                edge_list.append(edge)
+            if rxn.rxn_type == 'catalytic_degradation':
+                edge = (node_key[rxn.reactants[1]], node_key[rxn.reactants[0]], rxn.rxn_type)
+                edge_list.append(edge)
+            if rxn.rxn_type == 'modification':
+                edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type)
+                edge_list.append(edge)
+            if rxn.rxn_type == 'catalytic_modification':
+                edge = (node_key[rxn.reactants[0]], node_key[rxn.products[0]], rxn.rxn_type)
+                edge_list.append(edge)
+
+        return edge_list, node_labels, node_key
+
+    def show_topology(self, graph_layout='shell', input_node=None, output_node=None, edge_labels=False, retall=False):
+        """
+        Generates networkx visualization of network topology.
+
+        Parameters:
+            graph_layout (string) - method used to arrange network nodes in space
+            input_node (int) - index of node to which input signal is sent
+            output_node (int) - index of node from which output is retrieved
+            edge_labels (bool) - if True, label edges with interaction type
+            retall (bool) - if True, return axes
+        """
+
+        # get network topology
+        edge_list, node_labels, node_key = self.get_topology()
+        node_key[None] = None
+
+        if len(edge_list) == 0:
+            print('Network has no edges.')
+            return
+
+        # display options
+        node_size = 10000
+        node_alpha = 1
+        node_text_size = 22
+        edge_alpha = 0.5
+        edge_text_pos = 0.4
+
+        # set fill colors for nodes
+        input_color = (206/256, 111/256, 111/256)
+        gene_color = (138/256, 201/256, 228/256)
+        modified_protein_color = (177/256, 166/256, 203/256)
+        mirna_color = (112/256, 209/256, 177/256)
+
+        # create networkx graph
+        plt.figure()
+        g = nx.DiGraph()
+
+        # add nodes
+        for node, node_type in node_labels.items():
+            g.add_node(node, attr_dict={'node_type': node_type})
+
+        # add edges
+        for edge in edge_list:
+            g.add_edge(edge[0], edge[1])
+
+        # select graph layout scheme
+        if graph_layout == 'spring':
+            pos = nx.spring_layout(g)
+        elif graph_layout == 'spectral':
+            pos = nx.spectral_layout(g)
+        elif graph_layout == 'random':
+            pos = nx.random_layout(g)
+        else:
+            pos = nx.shell_layout(g)
+
+        # sort nodes into five types (different colors on graph)
+        input_nodes = [node for node, node_type in node_labels.items() if node_type == 'input node']
+        permanent_genes = [node for node, node_type in node_labels.items() if node_type == 'permanent gene']
+        removable_genes = [node for node, node_type in node_labels.items() if node_type == 'removable gene']
+        non_coding_genes = [node for node, node_type in node_labels.items() if node_type == 'non-coding gene']
+        modified_proteins = [node for node, node_type in node_labels.items() if node_type == 'modified protein']
+
+        # draw input nodes (note networkx interprets 3 nodes and color mappable so i've duplicated a node if count=3)
+        if len(input_nodes) > 0:
+            nx.draw_networkx_nodes(g, pos, nodelist=input_nodes, node_color=input_color, node_size=node_size, alpha=node_alpha)
+
+        # draw permanent genes
+        if len(permanent_genes) > 0:
+            if len(permanent_genes) == 3:
+                permanent_genes.append(permanent_genes[0])
+            nx.draw_networkx_nodes(g, pos, nodelist=permanent_genes, node_color=gene_color, node_size=node_size, alpha=node_alpha)
+
+        # draw coding genes
+        if len(removable_genes) > 0:
+            if len(removable_genes) == 3:
+                removable_genes.append(removable_genes[0])
+            nx.draw_networkx_nodes(g, pos, nodelist=removable_genes, node_color=gene_color, node_size=node_size, alpha=node_alpha)
+
+        # draw non-coding genes (miRNAs)
+        if len(non_coding_genes) > 0:
+            if len(non_coding_genes) == 3:
+                non_coding_genes.append(non_coding_genes[0])
+            nx.draw_networkx_nodes(g, pos, nodelist=non_coding_genes, node_color=mirna_color, node_size=node_size, alpha=node_alpha)
+
+        # draw modified proteins
+        if len(modified_proteins) > 0:
+            if len(modified_proteins) == 3:
+                modified_proteins.append(modified_proteins[0])
+            nx.draw_networkx_nodes(g, pos, nodelist=modified_proteins, node_color=modified_protein_color, node_size=node_size, alpha=node_alpha)
+
+        # sort edge_list into dictionaries of up-regulating and down-regulating interactions, where (from, to) tuples
+        # are keys and values are edge_type strings
+        up_regulating_edges, down_regulating_edges = {}, {}
+        for edge in edge_list:
+
+            if edge[2] in ['activation', 'modification', 'catalytic_modification']:
+                up_regulating_edges[(edge[0], edge[1])] = edge[2]
+            else:
+                down_regulating_edges[(edge[0], edge[1])] = edge[2]
+
+        # draw green upregulating and red downregulating edges
+        nx.draw_networkx_edges(g, pos, edgelist=up_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='g')
+        nx.draw_networkx_edges(g, pos, edgelist=down_regulating_edges.keys(), width=5, alpha=edge_alpha, edge_color='r')
+
+        # add edge labels
+        if edge_labels is True:
+            nx.draw_networkx_edge_labels(g, pos, edge_labels=up_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
+            nx.draw_networkx_edge_labels(g, pos, edge_labels=down_regulating_edges, label_pos=edge_text_pos, font_size=10, fontweight='bold')
+
+        # draw node labels with gene numbers
+        for node, node_type in node_labels.items():
+
+            if node_type == 'input node':
+                node_labels[node] = 'INPUT' + '\n' + str(node)
+            elif node == node_key[output_node] and output_node is not None:
+                node_labels[node] = 'OUTPUT' + '\n' + str(node)
+            else:
+                node_labels[node] = str(node)
+
+        nx.draw_networkx_labels(g, pos, labels=node_labels, font_size=node_text_size, fontweight='bold', color='k', ha='center')
+
+        # get current figure and axes
+        fig = plt.gcf()
+        fig.set_size_inches(15, 13)
+        _ = plt.axis('off')
+        ax = plt.gca()
+
+        # add enzyme assistance as an arrow to the midpoint of an edge
+        for rxn in self.reactions:
+            if rxn.rxn_type == 'catalytic_modification':
+
+                x_substrate, y_substrate = pos[node_key[rxn.reactants[0]]]
+                x_enzyme, y_enzyme = pos[node_key[rxn.reactants[1]]]
+                x_product, y_product = pos[node_key[rxn.products[0]]]
+
+                x = x_enzyme
+                y = y_enzyme
+                U = (x_product - x_substrate)/2 + x_substrate - x_enzyme
+                V = (y_product - y_substrate)/2 + y_substrate - y_enzyme
+                ax.arrow(x, y, U, V, length_includes_head=True, head_length=0.05, head_width=0.025, fc='g', ec='g', linewidth=5, alpha=edge_alpha)
+
+        # add legend
+        inputs_patch = mpatches.Patch(color=input_color, label='input signal')
+        genes_patch = mpatches.Patch(color=gene_color, label='protein coding gene')
+        mod_proteins_patch = mpatches.Patch(color=modified_protein_color, label='modified protein')
+        mirnas_patch = mpatches.Patch(color=mirna_color, label='miRNA coding gene')
+        upreg_line = mlines.Line2D([], [], color='g', linewidth=5, label='Upregulation', alpha=edge_alpha)
+        downreg_line = mlines.Line2D([], [], color='r', linewidth=5, label='Downregulation', alpha=edge_alpha)
+        legend = ax.legend(loc=(0.1, 0.1), handles=[inputs_patch, genes_patch, mod_proteins_patch, mirnas_patch, upreg_line, downreg_line], ncol=3, prop={'size': 16})
+
+        if retall is True:
+            return ax

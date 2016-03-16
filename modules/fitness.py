@@ -8,7 +8,8 @@ from modules.parameters import plateau_count, plateau_duration
 
 """
 TO DO:
-    1. normalize cumulative deviation by the steady state * window area
+
+    1. separate out WHY a test failed... need to figure out fraction that are failing and why... make smarter choices
 
 """
 
@@ -35,10 +36,10 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
 
     # set default input/output if none specified
     if input_node is None:
-        input_node = 2
+        input_node = 0
 
     if output_node is None:
-        output_node = 1
+        output_node = 2
 
     # get steady state levels, if no nonzero stable steady states are found then return None and move on
     if steady_states is None:
@@ -66,7 +67,6 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
     else:
         # use specific sequence of plateaus for input signal
         input_signal = [(0, 1), (100, 3), (200, 5), (300, 3), (400, 1), (500, 1)]
-        #input_signal = [(0, 0.1), (300, 0)]
 
     # run simulation
     times, states, energy = cell.simulate(input_signal, input_node=input_node, ic=steady_states, solve_if_stiff=solve_if_stiff)

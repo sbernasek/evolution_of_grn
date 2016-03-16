@@ -15,7 +15,7 @@ add equation used to calculate robustness score
 TO DO:
     1. write outer wrapper for file saving, if sim fails delete file
     2. change to ATP consumption rate
-    3. try using optimizer to sole for steady state and see whether bifurcation occurs.. maybe avoid running non-adaptive sims
+    3. try using optimizer to solve for steady state and see whether bifurcation occurs.. maybe avoid running non-adaptive sims
     4. constrain mutations to connected graph
     5. stop running rate calcs for energy usage calculations
     6. clean up analysis code.. comments, tick marks, etc
@@ -105,8 +105,8 @@ def run_simulation(directory=None, generations=10, population_size=20, mutations
         return
 
     # define input and output to be tested
-    input_node = 2
-    output_node = 1
+    input_node = 0
+    output_node = 2
 
     # simulation parameters
     cell_type = 'prokaryote'  # defines simulation type
@@ -130,7 +130,7 @@ def run_simulation(directory=None, generations=10, population_size=20, mutations
 
             # if no cells exist, use a plain template cell
             if len(population) == 0:
-                cell = Cell(name=1, removable_genes=0, permanent_genes=2, cell_type=cell_type)
+                cell = Cell(name=1, removable_genes=0, permanent_genes=2, input_nodes=1, cell_type=cell_type)
             else:
                 cell = np.random.choice(population)
 
