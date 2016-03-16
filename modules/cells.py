@@ -443,6 +443,80 @@ class Cell:
             self.reactions = [rxn for rxn in self.reactions if protein not in rxn.reactants and protein not in rxn.products]
             self.rate_mods = [mod for mod in self.rate_mods if protein != mod.substrate]
 
+    def prune_graph(self, input_node):
+        """
+        Removes all nodes and edges that are not within the input's activated subgraph (turned on by input).
+
+        Parameters:
+            input_node (int) - index of input node
+        """
+
+        upregulating_reactions = ['translation', 'modification', 'catalytic_modification']
+
+        # initialize subgraph
+        subgraph = [input_node]
+
+        output_connected = True
+        iters = 0
+        old_subgraph = []
+        while True:
+
+            # break if >1000 iterations
+            iters += 1
+            if iters > 1000:
+                break
+
+            # if subgraph hasn't changed, break loop
+            if subgraph == old_subgraph:
+                break
+
+            # update reference graph
+            old_subgraph = copy.deepcopy(subgraph)
+
+            # for each upregulating reaction in which all reactants are in the subgraph, add product to the subgraph
+            for rxn in self.reactions:
+                if rxn.rxn_type in upregulating_reactions:
+                    if set(rxn.reactants).issubset(subgraph):
+                        if rxn.products[0] not in subgraph:
+                            subgraph.append(rxn.products[0])
+
+            # for each transcriptional activation in which the substrate is in the subgraph, add target to the subgraph
+            for mod in self.rate_mods:
+                if mod.mod_type == 'activation':
+                    if mod.substrate in subgraph and mod.target not in subgraph:
+                        subgraph.append(mod.target)
+
+        # determine nodes to be pruned
+        all_nodes = set(self.input_nodes + self.coding_rnas + self.non_coding_rnas + self.proteins)
+        pruned = all_nodes.difference(subgraph)
+
+        # don't prune permanent genes or their associated proteins
+        pruned_permanent_genes = pruned.intersection(set(self.permanent_genes))
+        pruned_permanent_proteins = [rxn.products[0] for rxn in self.reactions if rxn.rxn_type == 'translation' and set(rxn.reactants).issubset(pruned_permanent_genes)]
+        if len(pruned_permanent_genes) > 0:
+            output_connected = False
+            pruned = pruned.difference(pruned_permanent_genes.union(set(pruned_permanent_proteins)))
+
+        # prune all mrnas and corresponding reactions that do not fall within subgraph
+        for gene in list(pruned.intersection(self.coding_rnas + self.non_coding_rnas)):
+            if gene in self.coding_rnas:
+                self.removable_genes.remove(gene)
+                self.coding_rnas.remove(gene)
+            if gene in self.non_coding_rnas:
+                self.non_coding_rnas.remove(gene)
+            self.reactions = [rxn for rxn in self.reactions if gene not in rxn.reactants and gene not in rxn.products]
+            self.rate_mods = [mod for mod in self.rate_mods if gene != mod.target]
+
+        # prune all proteins and corresponding reactions that do not fall within subgraph
+        for protein in list(pruned.intersection(self.proteins)):
+            self.proteins.remove(protein)
+            if protein in self.modified_proteins:
+                self.modified_proteins.remove(protein)
+            self.reactions = [rxn for rxn in self.reactions if protein not in rxn.reactants and protein not in rxn.products]
+            self.rate_mods = [mod for mod in self.rate_mods if protein != mod.substrate]
+
+        return output_connected
+
     def remove_coding_gene(self):
         """
         Removes mRNA + protein pair from cell's internal network, along with all edges attached to it.
@@ -975,7 +1049,7 @@ class Cell:
         # if no initial condition is provided, assume all states are initially zero
         initial_states = ic
         if ic is None:
-            initial_states = np.zeros(self.network_dimension)
+            initial_states = np.ones(self.network_dimension)
 
         # use fsolve to find roots of ODE system:
         while True:
@@ -1045,7 +1119,7 @@ class Cell:
             ax.set_ylabel('Output Level', fontsize=16)
             ax.set_title('Steady State Test', fontsize=16)
 
-    def interaction_check_numerical(self, input_node, output_node, tol=1e-3, steady_states=None, plot=False):
+    def interaction_check_numerical(self, input_node, output_node, tol=1e-10, steady_states=None, plot=False):
         """
         Determines whether input influences output by checking whether output deviates from steady state upon step
         change to input.
@@ -1071,11 +1145,11 @@ class Cell:
         output_ss_baseline = steady_states[self.key[output_node]]
 
         # if output steady state is zero under constant input, return False
-        if output_ss_baseline == 0:
+        if output_ss_baseline == 0 or output_ss_baseline < 1e-10:
             return False
 
         # apply new step change to input and simulate response
-        input_signal = [(0, 2), (10, 2)]
+        input_signal = [(0, 2), (1000, 2)]
         times, states, _ = self.simulate(input_signal, input_node=input_node, ic=steady_states)
 
         # if solver failed, return None so simulation is thrown out
@@ -1085,7 +1159,7 @@ class Cell:
         # get peak output deviation from initial steady state value
         output_states = states[self.key[output_node], :]
         max_deviation = max([abs(op - output_ss_baseline) for op in output_states]) / output_ss_baseline
-
+        print('max deviation', max_deviation)
         # plot input and output trajectories (optional)
         if plot is True:
 
@@ -1386,9 +1460,9 @@ class Cell:
         genes_patch = mpatches.Patch(color=gene_color, label='protein coding gene')
         mod_proteins_patch = mpatches.Patch(color=modified_protein_color, label='modified protein')
         mirnas_patch = mpatches.Patch(color=mirna_color, label='miRNA coding gene')
-        upreg_line = mlines.Line2D([], [], color='g', linewidth=5, label='Upregulation', alpha=edge_alpha)
-        downreg_line = mlines.Line2D([], [], color='r', linewidth=5, label='Downregulation', alpha=edge_alpha)
-        legend = ax.legend(loc=(0.1, 0.1), handles=[inputs_patch, genes_patch, mod_proteins_patch, mirnas_patch, upreg_line, downreg_line], ncol=3, prop={'size': 16})
+        upreg_line = mlines.Line2D([], [], color='g', linewidth=5, label='upregulation', alpha=edge_alpha)
+        downreg_line = mlines.Line2D([], [], color='r', linewidth=5, label='downregulation', alpha=edge_alpha)
+        legend = ax.legend(loc=(0.1, 0.0), handles=[inputs_patch, genes_patch, mod_proteins_patch, mirnas_patch, upreg_line, downreg_line], ncol=3, prop={'size': 16})
 
         if retall is True:
             return ax

@@ -44,13 +44,19 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
     # get steady state levels, if no nonzero stable steady states are found then return None and move on
     if steady_states is None:
         steady_states = cell.get_steady_states(input_node, input_magnitude=1, ic=None)
-        if steady_states is None or steady_states[cell.key[output_node]] < 0.5:
+        if steady_states is None or steady_states[cell.key[output_node]] < 0:
+            print('couldnt get steady state')
             return [None, None]
 
     # check to see whether input/output are connected, if not then skip this cell
     if interaction_check is True:
         connected = cell.interaction_check_numerical(input_node=input_node, output_node=output_node, steady_states=steady_states, plot=False)
         if connected is False or connected is None:
+
+            if connected is False:
+                print('not connected')
+            elif connected is None:
+                print('connection test failed')
             return [None, None]
 
     # if input_random is True, generate a sequence of random plateaus
@@ -73,6 +79,7 @@ def adaptation_test(cell, input_node=None, output_node=None, steady_states=None,
 
     # if simulation failed (returned None), return None
     if sum([item is None for item in [times, states, energy]]) > 0:
+        print('simulation failed')
         return [None, None]
 
     # retrieve output dynamics

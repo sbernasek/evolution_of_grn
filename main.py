@@ -11,6 +11,9 @@ import os
 
 add equation used to calculate robustness score
 
+PROBLEM:
+    1. integrating area rewards cases in which input/output are loosely connected... unless it's ok because we normalized
+
 
 TO DO:
     1. write outer wrapper for file saving, if sim fails delete file
@@ -18,8 +21,9 @@ TO DO:
     3. try using optimizer to solve for steady state and see whether bifurcation occurs.. maybe avoid running non-adaptive sims
     4. constrain mutations to connected graph
     5. stop running rate calcs for energy usage calculations
-    6. clean up analysis code.. comments, tick marks, etc
+    6. clean up analysis code.. tick marks, etc
     7. write master plot formatter in plotting.py
+    8. reconstruct lineage
 """
 
 
