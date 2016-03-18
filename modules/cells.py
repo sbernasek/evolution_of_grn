@@ -908,9 +908,12 @@ class Cell:
         solution = []
 
         # if no initial condition is provided, assume all states are initially zero
-        initial_states = ic
         if ic is None:
             initial_states = np.zeros(self.network_dimension)
+        else:
+            initial_states = ic
+
+        # initial_states = ic if ic is not None else np.zeros(self.network_dimension)
 
         # initialize ODE solver
         integration_length = input_signal[-1][0]
@@ -1481,3 +1484,7 @@ class Cell:
 
         if retall is True:
             return ax
+
+        return None
+
+

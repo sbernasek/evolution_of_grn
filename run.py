@@ -7,7 +7,7 @@ from main import *
 test = "robustness"
 
 # define simulation size
-generations = 100
+generations = 200
 population_size = 25
 
 # write data to specified directory
